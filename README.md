@@ -1,9 +1,10 @@
-# Teminat Group — Dava & Muhasebe Web Uygulaması
+# Teminat Group — Cari, Dava & Muhasebe Web Uygulaması
 
-Google Apps Script + Google E-Tablolar üzerine kurulu, tek kullanıcılı **dava takip
-ve muhasebe** web uygulaması. Müvekkil dosyalarını, dava türlerini ve aşamalarını
-yönetir; gelir/gider hareketlerini kaydeder ve her muhasebe hareketinde ilgili
-dosyanın finans özetlerini (tahsilat, kalan bakiye, gider, net kâr) otomatik günceller.
+Google Apps Script + Google E-Tablolar üzerine kurulu, tek kullanıcılı **cari hesap,
+dava takip ve muhasebe** web uygulaması. Kişi/firma cari hesaplarını (Borç/Alacak
+ekstresi), davaları ve cari hareketlerini yönetir. Tüm modüller tek veri kaynağını
+paylaşır: bir cariye girilen ve bir davaya işaretlenen hareket, hem cari ekstresinde
+hem de o davanın ekranında otomatik görünür.
 
 ## ⚡ Hızlı deneme (Apps Script GEREKMEZ)
 
@@ -13,18 +14,22 @@ yerel belleğinde tutulur; dosya ekleme, muhasebe, otomatik hesaplama, örnek ve
 ve sıfırlama dahil her şey birebir çalışır. Beğenince aşağıdaki adımlarla gerçek
 sürümü (Apps Script + E-Tablo) bir kez kurarsınız — kod aynıdır.
 
-## Özellikler
+## Modüller
 
-- **📈 Özet panosu:** toplam dosya/açık dosya, toplam gelir-gider-net kâr, toplam
-  alacak, dava türü ve aşama dağılımları, son hareketler.
-- **📁 Dosya yönetimi:** müvekkil bilgileri, dava türü, aşama, karşı taraf/sigorta,
-  tazminat talebi, anlaşılan ücret. Arama ve tür/aşama filtreleri. Dosya detayında
-  ilgili tüm muhasebe hareketleri listelenir.
-- **💰 Muhasebe modülü:** gelir/gider hareketleri, kategori ve ödeme yöntemi,
-  dosyaya bağlama (masraf-dosya eşleştirme). Dosyaya bağlanan her hareket dosyanın
-  finansını otomatik günceller.
-- **Veritabanı = Google E-Tablo:** veriler `Dosyalar`, `Muhasebe`, `Ayarlar`
-  sayfalarında tutulur. Uygulama ilk açılışta e-tabloyu otomatik oluşturur.
+- **📈 Özet:** toplam cari, açık dava, toplam tahsilat/borçlandırma, net alacak/borç,
+  dava türü dağılımı, en yüksek bakiyeli cariler, son hareketler.
+- **👥 Cariler (cari + muhasebe):** kişi/firma ekleme; her cari için **Borç/Alacak
+  ekstresi** ve yürüyen bakiye. Cari detayında hareket ekleme, bağlı davalar listesi
+  ve **yazdırılabilir/indirilebilir cari dokümanı (ekstre)**.
+- **📁 Davalar:** her dava bir cariye (müvekkile) bağlıdır. Dava türü, aşama, karşı
+  taraf, tazminat talebi, anlaşılan ücret. Dava detayında o davaya bağlı hareketler
+  (tahakkuk / tahsilat / kalan) ve carinin genel bakiyesi görünür.
+- **💰 Muhasebe:** tüm cari hareketleri (filtre: cari, yön, arama) + kişi bazında
+  cari özet tablosu; her satırdan tek tıkla **ekstre indir**.
+- **Cari hareket = Borç / Alacak:** *Borçlandırma* (cari size borçlanır: vekalet
+  ücreti, masraf yansıtma) ve *Tahsilat* (ödeme aldınız). Bakiye = Açılış + ΣBorç − ΣAlacak.
+- **Veritabanı = Google E-Tablo:** veriler `Cariler`, `Dosyalar`, `Hareketler`,
+  `Ayarlar` sayfalarında tutulur. Uygulama ilk açılışta e-tabloyu otomatik oluşturur.
 
 ## Dava Türleri (varsayılan)
 Değer Kaybı · Hak Mahrumiyeti · Hasar Farkı · Kazanç Kaybı · DASK · Ayıplı Mal ·
@@ -75,10 +80,8 @@ clasp deploy
 
 - Uygulama **tek kullanıcı** için tasarlandı; giriş/rol sistemi yoktur. Erişim,
   web app dağıtımındaki "Yalnızca ben" ayarıyla korunur.
-- Dava türleri/aşamalar/kategoriler `Ayarlar` sayfasından özelleştirilebilir.
-- `recalcAll()` fonksiyonu (editörden çalıştırılır) tüm dosyaların finans
-  özetlerini elle yeniden hesaplar — bakım amaçlı.
-- **Örnek veri:** Üst bardaki **🧪 Örnek Veri** butonu deneme için 6 dosya ve 10
-  muhasebe hareketi ekler. Aynısı editörden `seedSampleData()` ile de çalıştırılabilir.
-  Denemeyi bitirince bu kayıtları arayüzden silebilir veya E-Tablo'daki satırları
-  temizleyebilirsiniz.
+- Dava türleri/aşamalar/cari tipleri/kategoriler `Ayarlar` sayfasından özelleştirilebilir.
+- Bakiye, dava finansları ve gösterge paneli ham verilerden **istemcide** hesaplanır;
+  sunucu yalnızca ham satırları saklar (ayrı bir yeniden hesaplama adımı gerekmez).
+- **Örnek veri:** Üst bardaki **🧪 Örnek Veri** butonu deneme için 6 cari, 4 dava ve
+  10 hareket ekler. Aynısı editörden `seedSampleData()` ile de çalıştırılabilir.

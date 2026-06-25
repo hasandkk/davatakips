@@ -1,37 +1,40 @@
 /**
- * Teminat Group - Dava & Muhasebe Web Uygulaması
- * ------------------------------------------------
- * Google E-Tablolar'ı veritabanı olarak kullanan, tek kullanıcılı
- * dava takip + muhasebe web uygulaması.
+ * Teminat Group - Cari, Dava & Muhasebe Web Uygulaması
+ * -----------------------------------------------------
+ * Google E-Tablolar'ı veritabanı olarak kullanan, tek kullanıcılı uygulama.
  *
- * Mimari:
- *   - "Dosyalar"  sayfası: dava/dosya kayıtları (müvekkil, dava türü, aşama, finans özetleri)
- *   - "Muhasebe"  sayfası: gelir/gider hareketleri (dosyaya bağlanabilir)
- *   - "Ayarlar"   sayfası: dava türleri, dosya aşamaları, kategoriler
+ * Modüller (tek veri kaynağını paylaşır → otomatik senkron):
+ *   - Cariler   : kişi/firma cari hesapları (Borç/Alacak ekstresi)
+ *   - Dosyalar  : davalar; her dava bir cariye (müvekkile) bağlıdır
+ *   - Hareketler: cari hareketleri (Borç/Alacak); isteğe bağlı bir davaya bağlanır
  *
- * Bir muhasebe hareketi eklendiğinde / silindiğinde ilgili dosyanın
- * finans özetleri (Tahsil Edilen, Kalan Bakiye, Toplam Gider, Net Kâr)
- * otomatik olarak yeniden hesaplanır.
+ * Bakiye, dava finansları ve gösterge paneli ham verilerden İSTEMCİDE
+ * hesaplanır; sunucu yalnızca ham satırları saklar/okur (recalc gerekmez).
  */
 
 /* ============================ SABİTLER ============================ */
 
-var SPREADSHEET_NAME = 'Teminat Group - Dava & Muhasebe Veritabanı';
+var SPREADSHEET_NAME = 'Teminat Group - Cari, Dava & Muhasebe';
 var PROP_SHEET_ID = 'TEMINAT_DB_ID';
 
-var SHEET_DOSYALAR = 'Dosyalar';
-var SHEET_MUHASEBE = 'Muhasebe';
-var SHEET_AYARLAR  = 'Ayarlar';
+var SHEET_CARILER   = 'Cariler';
+var SHEET_DOSYALAR  = 'Dosyalar';
+var SHEET_HAREKET   = 'Hareketler';
+var SHEET_AYARLAR   = 'Ayarlar';
 
-var DOSYA_HEADERS = [
-  'DosyaNo', 'AcilisTarihi', 'MuvekkilAd', 'Telefon', 'TC',
-  'DavaTuru', 'KarsiTaraf', 'Asama', 'TazminatTalebi', 'AnlasilanUcret',
-  'TahsilEdilen', 'KalanBakiye', 'ToplamGider', 'NetKar', 'Aciklama', 'SonGuncelleme'
+var CARI_HEADERS = [
+  'CariNo', 'Unvan', 'Tip', 'Telefon', 'Email',
+  'KimlikVergiNo', 'Adres', 'AcilisBakiye', 'Notlar', 'KayitTarihi'
 ];
 
-var MUHASEBE_HEADERS = [
-  'IslemID', 'Tarih', 'DosyaNo', 'Tur', 'Kategori',
-  'Tutar', 'OdemeYontemi', 'Aciklama', 'KayitTarihi'
+var DOSYA_HEADERS = [
+  'DosyaNo', 'AcilisTarihi', 'CariNo', 'MuvekkilAd', 'DavaTuru',
+  'KarsiTaraf', 'Asama', 'TazminatTalebi', 'AnlasilanUcret', 'Aciklama', 'SonGuncelleme'
+];
+
+var HAREKET_HEADERS = [
+  'IslemID', 'Tarih', 'CariNo', 'DosyaNo', 'Yon',
+  'Kategori', 'Tutar', 'OdemeYontemi', 'BelgeNo', 'Aciklama', 'KayitTarihi'
 ];
 
 // Varsayılan ayarlar (Ayarlar sayfası boşsa bunlar kullanılır)
@@ -43,33 +46,27 @@ var DEFAULT_ASAMALAR = [
   'Yeni Başvuru', 'Evrak Toplama', 'Başvuru Yapıldı', 'Dava Açıldı',
   'Bilirkişi', 'Karar Bekleniyor', 'Karar Çıktı', 'Tahsilat', 'Kapandı', 'Reddedildi'
 ];
-var DEFAULT_GELIR_KAT = ['Avans', 'Tahsilat', 'Vekalet Ücreti', 'Diğer Gelir'];
-var DEFAULT_GIDER_KAT = ['Mahkeme Harcı', 'Bilirkişi Ücreti', 'Posta/Tebligat', 'Yol/Ulaşım', 'Danışmanlık', 'Ofis Gideri', 'Diğer Gider'];
+var DEFAULT_CARI_TIPLERI = ['Müvekkil', 'Karşı Taraf', 'Tedarikçi', 'Diğer'];
+var DEFAULT_BORC_KAT = ['Vekalet Ücreti', 'Masraf Yansıtma', 'Dava Harcı', 'Bilirkişi Ücreti', 'Danışmanlık', 'Diğer'];
+var DEFAULT_ALACAK_KAT = ['Tahsilat', 'Avans', 'İade', 'Diğer'];
 var DEFAULT_ODEME = ['Nakit', 'Havale/EFT', 'Kredi Kartı', 'Çek'];
 
 /* ============================ WEB APP ============================ */
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Teminat Group | Dava & Muhasebe')
+    .setTitle('Teminat Group | Cari, Dava & Muhasebe')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setFaviconUrl('https://www.google.com/images/icons/product/sheets-32.png');
 }
 
 /* ====================== VERİTABANI KURULUMU ====================== */
 
-/**
- * Veritabanı e-tablosunu döndürür; yoksa oluşturur ve Script Properties'e
- * ID'sini kaydeder. İlk çalıştırmada otomatik olarak başlık satırlarını yazar.
- */
 function getDB_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty(PROP_SHEET_ID);
   var ss = null;
-
-  if (id) {
-    try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; }
-  }
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
   if (!ss) {
     ss = SpreadsheetApp.create(SPREADSHEET_NAME);
     props.setProperty(PROP_SHEET_ID, ss.getId());
@@ -79,24 +76,19 @@ function getDB_() {
 }
 
 function ensureSheets_(ss) {
-  // Varsayılan "Sayfa1" varsa ve boşsa temizlik için bırakıyoruz.
+  ensureSheetWithHeaders_(ss, SHEET_CARILER, CARI_HEADERS);
   ensureSheetWithHeaders_(ss, SHEET_DOSYALAR, DOSYA_HEADERS);
-  ensureSheetWithHeaders_(ss, SHEET_MUHASEBE, MUHASEBE_HEADERS);
+  ensureSheetWithHeaders_(ss, SHEET_HAREKET, HAREKET_HEADERS);
   ensureAyarlar_(ss);
-
-  // İlk kurulumda kalan varsayılan boş sayfayı sil
   var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Sayfa1');
-  if (def && ss.getSheets().length > 1) {
-    try { ss.deleteSheet(def); } catch (e) {}
-  }
+  if (def && ss.getSheets().length > 1) { try { ss.deleteSheet(def); } catch (e) {} }
 }
 
 function ensureSheetWithHeaders_(ss, name, headers) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   var firstRow = sh.getRange(1, 1, 1, headers.length).getValues()[0];
-  var needsHeader = firstRow.join('') === '' || firstRow[0] !== headers[0];
-  if (needsHeader) {
+  if (firstRow.join('') === '' || firstRow[0] !== headers[0]) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers])
       .setFontWeight('bold').setBackground('#1f2937').setFontColor('#ffffff');
     sh.setFrozenRows(1);
@@ -111,28 +103,24 @@ function ensureAyarlar_(ss) {
   var cols = [
     ['DavaTurleri', DEFAULT_DAVA_TURLERI],
     ['Asamalar', DEFAULT_ASAMALAR],
-    ['GelirKategori', DEFAULT_GELIR_KAT],
-    ['GiderKategori', DEFAULT_GIDER_KAT],
+    ['CariTipleri', DEFAULT_CARI_TIPLERI],
+    ['BorcKategori', DEFAULT_BORC_KAT],
+    ['AlacakKategori', DEFAULT_ALACAK_KAT],
     ['OdemeYontemi', DEFAULT_ODEME]
   ];
   var maxLen = Math.max.apply(null, cols.map(function (c) { return c[1].length; }));
-  var data = [];
-  data.push(cols.map(function (c) { return c[0]; })); // başlık
-  for (var r = 0; r < maxLen; r++) {
-    data.push(cols.map(function (c) { return c[1][r] || ''; }));
-  }
+  var data = [cols.map(function (c) { return c[0]; })];
+  for (var r = 0; r < maxLen; r++) data.push(cols.map(function (c) { return c[1][r] || ''; }));
   sh.getRange(1, 1, data.length, cols.length).setValues(data);
-  sh.getRange(1, 1, 1, cols.length).setFontWeight('bold')
-    .setBackground('#1f2937').setFontColor('#ffffff');
+  sh.getRange(1, 1, 1, cols.length).setFontWeight('bold').setBackground('#1f2937').setFontColor('#ffffff');
   sh.setFrozenRows(1);
   return sh;
 }
 
 function getColumnList_(sheet, headerName) {
   var values = sheet.getDataRange().getValues();
-  if (values.length === 0) return [];
-  var headers = values[0];
-  var col = headers.indexOf(headerName);
+  if (!values.length) return [];
+  var col = values[0].indexOf(headerName);
   if (col === -1) return [];
   var out = [];
   for (var r = 1; r < values.length; r++) {
@@ -152,8 +140,7 @@ function rowsToObjects_(sheet) {
   var headers = values[0];
   var out = [];
   for (var r = 1; r < values.length; r++) {
-    var obj = { _row: r + 1 };
-    var empty = true;
+    var obj = {}, empty = true;
     for (var c = 0; c < headers.length; c++) {
       var val = values[r][c];
       if (val instanceof Date) val = formatDate_(val);
@@ -170,10 +157,8 @@ function formatDate_(d) {
   if (!(d instanceof Date)) return d;
   return Utilities.formatDate(d, 'Europe/Istanbul', 'yyyy-MM-dd');
 }
-
-function nowStamp_() {
-  return Utilities.formatDate(new Date(), 'Europe/Istanbul', 'yyyy-MM-dd HH:mm');
-}
+function nowStamp_() { return Utilities.formatDate(new Date(), 'Europe/Istanbul', 'yyyy-MM-dd HH:mm'); }
+function today_() { return Utilities.formatDate(new Date(), 'Europe/Istanbul', 'yyyy-MM-dd'); }
 
 function toNumber_(v) {
   if (v === '' || v === null || v === undefined) return 0;
@@ -181,124 +166,6 @@ function toNumber_(v) {
   var s = ('' + v).replace(/\./g, '').replace(',', '.').replace(/[^\d.\-]/g, '');
   var n = parseFloat(s);
   return isNaN(n) ? 0 : n;
-}
-
-/* ====================== AYARLAR / META ====================== */
-
-function getMeta() {
-  var ss = getDB_();
-  var ayar = ss.getSheetByName(SHEET_AYARLAR);
-  return {
-    spreadsheetUrl: ss.getUrl(),
-    davaTurleri: getColumnList_(ayar, 'DavaTurleri'),
-    asamalar: getColumnList_(ayar, 'Asamalar'),
-    gelirKategori: getColumnList_(ayar, 'GelirKategori'),
-    giderKategori: getColumnList_(ayar, 'GiderKategori'),
-    odemeYontemi: getColumnList_(ayar, 'OdemeYontemi')
-  };
-}
-
-/**
- * Arayüzün tek çağrıda ihtiyaç duyduğu tüm verileri döndürür
- * (dosyalar + muhasebe + gösterge paneli). Round-trip sayısını azaltır.
- */
-function bootstrapData() {
-  return {
-    cases: getCases(),
-    tx: getTransactions(),
-    dash: getDashboard()
-  };
-}
-
-/* ====================== DOSYALAR (CRUD) ====================== */
-
-function getCases() {
-  return rowsToObjects_(getSheet_(SHEET_DOSYALAR));
-}
-
-function generateDosyaNo_(sheet) {
-  var year = new Date().getFullYear();
-  var values = sheet.getDataRange().getValues();
-  var max = 0;
-  for (var r = 1; r < values.length; r++) {
-    var no = '' + values[r][0];
-    var m = no.match(/(\d+)\s*$/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  var next = ('000' + (max + 1)).slice(-4);
-  return 'D-' + year + '-' + next;
-}
-
-function addCase(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = getSheet_(SHEET_DOSYALAR);
-    var dosyaNo = (data.DosyaNo && ('' + data.DosyaNo).trim()) || generateDosyaNo_(sh);
-    var row = [
-      dosyaNo,
-      data.AcilisTarihi || formatDate_(new Date()),
-      data.MuvekkilAd || '',
-      data.Telefon || '',
-      data.TC || '',
-      data.DavaTuru || '',
-      data.KarsiTaraf || '',
-      data.Asama || 'Yeni Başvuru',
-      toNumber_(data.TazminatTalebi),
-      toNumber_(data.AnlasilanUcret),
-      0, 0, 0, 0, // finans özetleri (recalc ile dolacak)
-      data.Aciklama || '',
-      nowStamp_()
-    ];
-    sh.appendRow(row);
-    recalcCase_(dosyaNo);
-    return { ok: true, dosyaNo: dosyaNo };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function updateCase(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = getSheet_(SHEET_DOSYALAR);
-    var rowIdx = findRowByValue_(sh, 'DosyaNo', data.DosyaNo);
-    if (rowIdx === -1) return { ok: false, error: 'Dosya bulunamadı: ' + data.DosyaNo };
-    var headers = sh.getRange(1, 1, 1, DOSYA_HEADERS.length).getValues()[0];
-    var current = sh.getRange(rowIdx, 1, 1, headers.length).getValues()[0];
-
-    var map = {
-      AcilisTarihi: data.AcilisTarihi, MuvekkilAd: data.MuvekkilAd, Telefon: data.Telefon,
-      TC: data.TC, DavaTuru: data.DavaTuru, KarsiTaraf: data.KarsiTaraf, Asama: data.Asama,
-      TazminatTalebi: toNumber_(data.TazminatTalebi), AnlasilanUcret: toNumber_(data.AnlasilanUcret),
-      Aciklama: data.Aciklama, SonGuncelleme: nowStamp_()
-    };
-    for (var c = 0; c < headers.length; c++) {
-      if (map.hasOwnProperty(headers[c]) && map[headers[c]] !== undefined) {
-        current[c] = map[headers[c]];
-      }
-    }
-    sh.getRange(rowIdx, 1, 1, headers.length).setValues([current]);
-    recalcCase_(data.DosyaNo);
-    return { ok: true };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function deleteCase(dosyaNo) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = getSheet_(SHEET_DOSYALAR);
-    var rowIdx = findRowByValue_(sh, 'DosyaNo', dosyaNo);
-    if (rowIdx === -1) return { ok: false, error: 'Dosya bulunamadı.' };
-    sh.deleteRow(rowIdx);
-    return { ok: true };
-  } finally {
-    lock.releaseLock();
-  }
 }
 
 function findRowByValue_(sheet, headerName, value) {
@@ -311,212 +178,216 @@ function findRowByValue_(sheet, headerName, value) {
   return -1;
 }
 
-/* ====================== MUHASEBE (CRUD) ====================== */
+/* ====================== META / BOOTSTRAP ====================== */
 
-function getTransactions() {
-  return rowsToObjects_(getSheet_(SHEET_MUHASEBE));
-}
-
-function addTransaction(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = getSheet_(SHEET_MUHASEBE);
-    var id = 'M' + new Date().getTime();
-    var row = [
-      id,
-      data.Tarih || formatDate_(new Date()),
-      data.DosyaNo || '',
-      data.Tur || 'Gelir',
-      data.Kategori || '',
-      toNumber_(data.Tutar),
-      data.OdemeYontemi || '',
-      data.Aciklama || '',
-      nowStamp_()
-    ];
-    sh.appendRow(row);
-    if (data.DosyaNo) recalcCase_(data.DosyaNo);
-    return { ok: true, id: id };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function deleteTransaction(islemId) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = getSheet_(SHEET_MUHASEBE);
-    var values = sh.getDataRange().getValues();
-    var idCol = values[0].indexOf('IslemID');
-    var dosyaCol = values[0].indexOf('DosyaNo');
-    for (var r = 1; r < values.length; r++) {
-      if ('' + values[r][idCol] === '' + islemId) {
-        var dosyaNo = values[r][dosyaCol];
-        sh.deleteRow(r + 1);
-        if (dosyaNo) recalcCase_(dosyaNo);
-        return { ok: true };
-      }
-    }
-    return { ok: false, error: 'İşlem bulunamadı.' };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/* ============== FİNANS YENİDEN HESAPLAMA (ÇEKİRDEK) ============== */
-
-/**
- * Verilen dosya için tüm muhasebe hareketlerini toplayıp dosyanın
- * Tahsil Edilen / Kalan Bakiye / Toplam Gider / Net Kâr alanlarını günceller.
- * Muhasebe değiştiğinde dosya bilgisinin de güncellenmesini sağlar.
- */
-function recalcCase_(dosyaNo) {
-  var dosyaSh = getSheet_(SHEET_DOSYALAR);
-  var rowIdx = findRowByValue_(dosyaSh, 'DosyaNo', dosyaNo);
-  if (rowIdx === -1) return;
-
-  var muh = getSheet_(SHEET_MUHASEBE).getDataRange().getValues();
-  var headers = muh[0];
-  var cDosya = headers.indexOf('DosyaNo');
-  var cTur = headers.indexOf('Tur');
-  var cTutar = headers.indexOf('Tutar');
-
-  var gelir = 0, gider = 0;
-  for (var r = 1; r < muh.length; r++) {
-    if ('' + muh[r][cDosya] === '' + dosyaNo) {
-      var tutar = toNumber_(muh[r][cTutar]);
-      if (('' + muh[r][cTur]).toLowerCase().indexOf('gider') !== -1) gider += tutar;
-      else gelir += tutar;
-    }
-  }
-
-  var dh = DOSYA_HEADERS;
-  var anlasilan = toNumber_(dosyaSh.getRange(rowIdx, dh.indexOf('AnlasilanUcret') + 1).getValue());
-  var kalan = anlasilan - gelir;
-  var netKar = gelir - gider;
-
-  dosyaSh.getRange(rowIdx, dh.indexOf('TahsilEdilen') + 1).setValue(gelir);
-  dosyaSh.getRange(rowIdx, dh.indexOf('KalanBakiye') + 1).setValue(kalan);
-  dosyaSh.getRange(rowIdx, dh.indexOf('ToplamGider') + 1).setValue(gider);
-  dosyaSh.getRange(rowIdx, dh.indexOf('NetKar') + 1).setValue(netKar);
-  dosyaSh.getRange(rowIdx, dh.indexOf('SonGuncelleme') + 1).setValue(nowStamp_());
-}
-
-/** Tüm dosyaların finans özetlerini yeniden hesaplar (bakım amaçlı). */
-function recalcAll() {
-  var cases = getCases();
-  cases.forEach(function (c) { recalcCase_(c.DosyaNo); });
-  return { ok: true, count: cases.length };
-}
-
-/* ====================== GÖSTERGE PANELİ ====================== */
-
-function getDashboard() {
-  var cases = getCases();
-  var tx = getTransactions();
-
-  var toplamGelir = 0, toplamGider = 0;
-  tx.forEach(function (t) {
-    var tutar = toNumber_(t.Tutar);
-    if (('' + t.Tur).toLowerCase().indexOf('gider') !== -1) toplamGider += tutar;
-    else toplamGelir += tutar;
-  });
-
-  var acikDosya = 0, kapaliDosya = 0;
-  var turDagilim = {};
-  var asamaDagilim = {};
-  var toplamBakiye = 0;
-  cases.forEach(function (c) {
-    var asama = '' + (c.Asama || '');
-    if (asama === 'Kapandı' || asama === 'Reddedildi') kapaliDosya++; else acikDosya++;
-    var tur = '' + (c.DavaTuru || 'Belirtilmemiş');
-    turDagilim[tur] = (turDagilim[tur] || 0) + 1;
-    asamaDagilim[asama || 'Belirtilmemiş'] = (asamaDagilim[asama || 'Belirtilmemiş'] || 0) + 1;
-    toplamBakiye += toNumber_(c.KalanBakiye);
-  });
-
-  // Son 8 işlem (en yeni en üstte)
-  var sonIslemler = tx.slice(-8).reverse();
-
+function getMeta() {
+  var ss = getDB_();
+  var a = ss.getSheetByName(SHEET_AYARLAR);
   return {
-    toplamDosya: cases.length,
-    acikDosya: acikDosya,
-    kapaliDosya: kapaliDosya,
-    toplamGelir: toplamGelir,
-    toplamGider: toplamGider,
-    netKar: toplamGelir - toplamGider,
-    toplamAlacak: toplamBakiye,
-    turDagilim: turDagilim,
-    asamaDagilim: asamaDagilim,
-    sonIslemler: sonIslemler
+    spreadsheetUrl: ss.getUrl(),
+    davaTurleri: getColumnList_(a, 'DavaTurleri'),
+    asamalar: getColumnList_(a, 'Asamalar'),
+    cariTipleri: getColumnList_(a, 'CariTipleri'),
+    borcKategori: getColumnList_(a, 'BorcKategori'),
+    alacakKategori: getColumnList_(a, 'AlacakKategori'),
+    odemeYontemi: getColumnList_(a, 'OdemeYontemi')
   };
+}
+
+function bootstrapData() {
+  return {
+    cariler: rowsToObjects_(getSheet_(SHEET_CARILER)),
+    cases: rowsToObjects_(getSheet_(SHEET_DOSYALAR)),
+    hareketler: rowsToObjects_(getSheet_(SHEET_HAREKET))
+  };
+}
+
+/* ====================== CARİLER (CRUD) ====================== */
+
+function generateCariNo_(sheet) {
+  var values = sheet.getDataRange().getValues(), max = 0;
+  for (var r = 1; r < values.length; r++) {
+    var m = ('' + values[r][0]).match(/(\d+)\s*$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'C-' + ('000' + (max + 1)).slice(-4);
+}
+
+function addCari(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_CARILER);
+    var cariNo = (data.CariNo && ('' + data.CariNo).trim()) || generateCariNo_(sh);
+    sh.appendRow([
+      cariNo, data.Unvan || '', data.Tip || 'Müvekkil', data.Telefon || '', data.Email || '',
+      data.KimlikVergiNo || '', data.Adres || '', toNumber_(data.AcilisBakiye), data.Notlar || '', nowStamp_()
+    ]);
+    return { ok: true, cariNo: cariNo };
+  } finally { lock.releaseLock(); }
+}
+
+function updateCari(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_CARILER);
+    var rowIdx = findRowByValue_(sh, 'CariNo', data.CariNo);
+    if (rowIdx === -1) return { ok: false, error: 'Cari bulunamadı.' };
+    var headers = CARI_HEADERS;
+    var cur = sh.getRange(rowIdx, 1, 1, headers.length).getValues()[0];
+    var map = { Unvan: data.Unvan, Tip: data.Tip, Telefon: data.Telefon, Email: data.Email,
+      KimlikVergiNo: data.KimlikVergiNo, Adres: data.Adres, AcilisBakiye: toNumber_(data.AcilisBakiye), Notlar: data.Notlar };
+    for (var c = 0; c < headers.length; c++) if (map.hasOwnProperty(headers[c]) && map[headers[c]] !== undefined) cur[c] = map[headers[c]];
+    sh.getRange(rowIdx, 1, 1, headers.length).setValues([cur]);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+function deleteCari(cariNo) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    // Bağlı dava veya hareket varsa silmeyi engelle (veri tutarlılığı).
+    var hareket = getSheet_(SHEET_HAREKET).getDataRange().getValues();
+    var hc = hareket[0].indexOf('CariNo');
+    for (var r = 1; r < hareket.length; r++) if ('' + hareket[r][hc] === '' + cariNo)
+      return { ok: false, error: 'Bu cariye ait hareketler var. Önce onları silin.' };
+    var dosya = getSheet_(SHEET_DOSYALAR).getDataRange().getValues();
+    var dc = dosya[0].indexOf('CariNo');
+    for (var r2 = 1; r2 < dosya.length; r2++) if ('' + dosya[r2][dc] === '' + cariNo)
+      return { ok: false, error: 'Bu cariye bağlı dava(lar) var. Önce davaları silin/değiştirin.' };
+    var sh = getSheet_(SHEET_CARILER);
+    var idx = findRowByValue_(sh, 'CariNo', cariNo);
+    if (idx === -1) return { ok: false, error: 'Cari bulunamadı.' };
+    sh.deleteRow(idx);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+/* ====================== DOSYALAR (CRUD) ====================== */
+
+function generateDosyaNo_(sheet) {
+  var year = new Date().getFullYear();
+  var values = sheet.getDataRange().getValues(), max = 0;
+  for (var r = 1; r < values.length; r++) {
+    var m = ('' + values[r][0]).match(/(\d+)\s*$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'D-' + year + '-' + ('000' + (max + 1)).slice(-4);
+}
+
+function addCase(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_DOSYALAR);
+    var dosyaNo = (data.DosyaNo && ('' + data.DosyaNo).trim()) || generateDosyaNo_(sh);
+    sh.appendRow([
+      dosyaNo, data.AcilisTarihi || today_(), data.CariNo || '', data.MuvekkilAd || '',
+      data.DavaTuru || '', data.KarsiTaraf || '', data.Asama || 'Yeni Başvuru',
+      toNumber_(data.TazminatTalebi), toNumber_(data.AnlasilanUcret), data.Aciklama || '', nowStamp_()
+    ]);
+    return { ok: true, dosyaNo: dosyaNo };
+  } finally { lock.releaseLock(); }
+}
+
+function updateCase(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_DOSYALAR);
+    var rowIdx = findRowByValue_(sh, 'DosyaNo', data.DosyaNo);
+    if (rowIdx === -1) return { ok: false, error: 'Dosya bulunamadı.' };
+    var headers = DOSYA_HEADERS;
+    var cur = sh.getRange(rowIdx, 1, 1, headers.length).getValues()[0];
+    var map = { AcilisTarihi: data.AcilisTarihi, CariNo: data.CariNo, MuvekkilAd: data.MuvekkilAd,
+      DavaTuru: data.DavaTuru, KarsiTaraf: data.KarsiTaraf, Asama: data.Asama,
+      TazminatTalebi: toNumber_(data.TazminatTalebi), AnlasilanUcret: toNumber_(data.AnlasilanUcret),
+      Aciklama: data.Aciklama, SonGuncelleme: nowStamp_() };
+    for (var c = 0; c < headers.length; c++) if (map.hasOwnProperty(headers[c]) && map[headers[c]] !== undefined) cur[c] = map[headers[c]];
+    sh.getRange(rowIdx, 1, 1, headers.length).setValues([cur]);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+function deleteCase(dosyaNo) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_DOSYALAR);
+    var idx = findRowByValue_(sh, 'DosyaNo', dosyaNo);
+    if (idx === -1) return { ok: false, error: 'Dosya bulunamadı.' };
+    sh.deleteRow(idx);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+/* ====================== HAREKETLER (CRUD) ====================== */
+
+function addHareket(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_HAREKET);
+    var id = 'H' + new Date().getTime();
+    var yon = (('' + data.Yon).toLowerCase().indexOf('alacak') !== -1) ? 'Alacak' : 'Borç';
+    sh.appendRow([
+      id, data.Tarih || today_(), data.CariNo || '', data.DosyaNo || '', yon,
+      data.Kategori || '', toNumber_(data.Tutar), data.OdemeYontemi || '', data.BelgeNo || '', data.Aciklama || '', nowStamp_()
+    ]);
+    return { ok: true, id: id };
+  } finally { lock.releaseLock(); }
+}
+
+function deleteHareket(islemId) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_HAREKET);
+    var idx = findRowByValue_(sh, 'IslemID', islemId);
+    if (idx === -1) return { ok: false, error: 'Hareket bulunamadı.' };
+    sh.deleteRow(idx);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
 }
 
 /* ====================== ÖRNEK / DENEME VERİSİ ====================== */
 
-/**
- * Deneme amaçlı örnek dosya ve muhasebe hareketleri ekler.
- * Hem editörden hem de arayüzdeki "Örnek Veri" butonundan çalıştırılabilir.
- */
 function seedSampleData() {
-  var ornekDosyalar = [
-    { MuvekkilAd: 'Ahmet Yılmaz', Telefon: '0532 111 22 33', TC: '12345678901',
-      DavaTuru: 'Değer Kaybı', KarsiTaraf: 'Anadolu Sigorta', Asama: 'Dava Açıldı',
-      TazminatTalebi: 45000, AnlasilanUcret: 9000, AcilisTarihi: '2026-01-15',
-      Aciklama: '34 ABC 123 plakalı araç, kavşakta arkadan çarpma.' },
-    { MuvekkilAd: 'Ayşe Demir', Telefon: '0541 222 33 44', TC: '23456789012',
-      DavaTuru: 'Hasar Farkı', KarsiTaraf: 'Axa Sigorta', Asama: 'Bilirkişi',
-      TazminatTalebi: 28000, AnlasilanUcret: 5600, AcilisTarihi: '2026-02-03',
-      Aciklama: 'Eksper hasar bedelini düşük belirledi, fark talebi.' },
-    { MuvekkilAd: 'Mehmet Kaya', Telefon: '0505 333 44 55', TC: '34567890123',
-      DavaTuru: 'Kazanç Kaybı', KarsiTaraf: 'Allianz', Asama: 'Karar Bekleniyor',
-      TazminatTalebi: 60000, AnlasilanUcret: 12000, AcilisTarihi: '2026-01-28',
-      Aciklama: 'Ticari taksi, kaza nedeniyle 45 gün çalışamama.' },
-    { MuvekkilAd: 'Fatma Şahin', Telefon: '0533 444 55 66', TC: '45678901234',
-      DavaTuru: 'DASK', KarsiTaraf: 'DASK', Asama: 'Tahsilat',
-      TazminatTalebi: 80000, AnlasilanUcret: 12000, AcilisTarihi: '2025-12-10',
-      Aciklama: 'Deprem hasarı, eksik ödeme itirazı. Karar lehe çıktı.' },
-    { MuvekkilAd: 'Hasan Çelik', Telefon: '0544 555 66 77', TC: '56789012345',
-      DavaTuru: 'Tüketici Hakem Heyeti', KarsiTaraf: 'XYZ Mobilya', Asama: 'Yeni Başvuru',
-      TazminatTalebi: 15000, AnlasilanUcret: 3000, AcilisTarihi: '2026-06-01',
-      Aciklama: 'Ayıplı koltuk takımı, iade/bedel iadesi.' },
-    { MuvekkilAd: 'Zeynep Arslan', Telefon: '0537 666 77 88', TC: '67890123456',
-      DavaTuru: 'Hak Mahrumiyeti', KarsiTaraf: 'Ray Sigorta', Asama: 'Kapandı',
-      TazminatTalebi: 35000, AnlasilanUcret: 7000, AcilisTarihi: '2025-11-05',
-      Aciklama: 'Dosya tamamlandı, ücret tahsil edildi.' }
+  var cariler = [
+    { Unvan: 'Ahmet Yılmaz', Tip: 'Müvekkil', Telefon: '0532 111 22 33', Email: 'ahmet@example.com', KimlikVergiNo: '12345678901', Adres: 'Kadıköy / İstanbul', AcilisBakiye: 0, Notlar: '' },
+    { Unvan: 'Ayşe Demir', Tip: 'Müvekkil', Telefon: '0541 222 33 44', Email: 'ayse@example.com', KimlikVergiNo: '23456789012', Adres: 'Çankaya / Ankara', AcilisBakiye: 0, Notlar: '' },
+    { Unvan: 'Mehmet Kaya', Tip: 'Müvekkil', Telefon: '0505 333 44 55', Email: '', KimlikVergiNo: '34567890123', Adres: 'Konak / İzmir', AcilisBakiye: 0, Notlar: 'Ticari taksi sahibi' },
+    { Unvan: 'Fatma Şahin', Tip: 'Müvekkil', Telefon: '0533 444 55 66', Email: '', KimlikVergiNo: '45678901234', Adres: 'Nilüfer / Bursa', AcilisBakiye: 0, Notlar: '' },
+    { Unvan: 'Anadolu Sigorta A.Ş.', Tip: 'Karşı Taraf', Telefon: '0850 000 00 00', Email: '', KimlikVergiNo: '0000000000', Adres: '', AcilisBakiye: 0, Notlar: '' },
+    { Unvan: 'XYZ Bilirkişilik', Tip: 'Tedarikçi', Telefon: '0212 999 88 77', Email: '', KimlikVergiNo: '1112223334', Adres: '', AcilisBakiye: 0, Notlar: 'Eksper/bilirkişi' }
   ];
+  var cNo = cariler.map(function (c) { return addCari(c).cariNo; });
 
-  var dosyaNolar = [];
-  ornekDosyalar.forEach(function (d) {
-    var res = addCase(d);
-    dosyaNolar.push(res.dosyaNo);
-  });
-
-  // Örnek muhasebe hareketleri (dosyalara bağlı + genel)
-  var ornekHareketler = [
-    { DosyaNo: dosyaNolar[0], Tarih: '2026-01-16', Tur: 'Gelir', Kategori: 'Avans', Tutar: 3000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Dosya açılış avansı' },
-    { DosyaNo: dosyaNolar[0], Tarih: '2026-01-20', Tur: 'Gider', Kategori: 'Mahkeme Harcı', Tutar: 1200, OdemeYontemi: 'Havale/EFT', Aciklama: 'Dava açılış harcı' },
-    { DosyaNo: dosyaNolar[1], Tarih: '2026-02-05', Tur: 'Gelir', Kategori: 'Avans', Tutar: 2000, OdemeYontemi: 'Nakit', Aciklama: 'Peşin avans' },
-    { DosyaNo: dosyaNolar[1], Tarih: '2026-02-12', Tur: 'Gider', Kategori: 'Bilirkişi Ücreti', Tutar: 1500, OdemeYontemi: 'Havale/EFT', Aciklama: 'Bilirkişi avansı' },
-    { DosyaNo: dosyaNolar[2], Tarih: '2026-02-01', Tur: 'Gelir', Kategori: 'Avans', Tutar: 4000, OdemeYontemi: 'Kredi Kartı', Aciklama: '' },
-    { DosyaNo: dosyaNolar[3], Tarih: '2026-03-15', Tur: 'Gelir', Kategori: 'Tahsilat', Tutar: 12000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Tazminat tahsil edildi, vekalet ücreti' },
-    { DosyaNo: dosyaNolar[3], Tarih: '2025-12-15', Tur: 'Gider', Kategori: 'Bilirkişi Ücreti', Tutar: 2000, OdemeYontemi: 'Havale/EFT', Aciklama: '' },
-    { DosyaNo: dosyaNolar[5], Tarih: '2025-11-20', Tur: 'Gelir', Kategori: 'Tahsilat', Tutar: 7000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Tam tahsilat' },
-    { DosyaNo: dosyaNolar[5], Tarih: '2025-11-08', Tur: 'Gider', Kategori: 'Posta/Tebligat', Tutar: 350, OdemeYontemi: 'Nakit', Aciklama: '' },
-    { DosyaNo: '', Tarih: '2026-06-01', Tur: 'Gider', Kategori: 'Ofis Gideri', Tutar: 4500, OdemeYontemi: 'Havale/EFT', Aciklama: 'Aylık ofis kirası (genel gider)' }
+  var davalar = [
+    { CariNo: cNo[0], MuvekkilAd: 'Ahmet Yılmaz', DavaTuru: 'Değer Kaybı', KarsiTaraf: 'Anadolu Sigorta', Asama: 'Dava Açıldı', TazminatTalebi: 45000, AnlasilanUcret: 9000, AcilisTarihi: '2026-01-15', Aciklama: '34 ABC 123, arkadan çarpma.' },
+    { CariNo: cNo[1], MuvekkilAd: 'Ayşe Demir', DavaTuru: 'Hasar Farkı', KarsiTaraf: 'Axa Sigorta', Asama: 'Bilirkişi', TazminatTalebi: 28000, AnlasilanUcret: 5600, AcilisTarihi: '2026-02-03', Aciklama: 'Eksik hasar bedeli farkı.' },
+    { CariNo: cNo[2], MuvekkilAd: 'Mehmet Kaya', DavaTuru: 'Kazanç Kaybı', KarsiTaraf: 'Allianz', Asama: 'Karar Bekleniyor', TazminatTalebi: 60000, AnlasilanUcret: 12000, AcilisTarihi: '2026-01-28', Aciklama: 'Ticari taksi, 45 gün çalışamama.' },
+    { CariNo: cNo[3], MuvekkilAd: 'Fatma Şahin', DavaTuru: 'DASK', KarsiTaraf: 'DASK', Asama: 'Tahsilat', TazminatTalebi: 80000, AnlasilanUcret: 12000, AcilisTarihi: '2025-12-10', Aciklama: 'Deprem hasarı eksik ödeme.' }
   ];
-  ornekHareketler.forEach(function (h) { addTransaction(h); });
+  var dNo = davalar.map(function (d) { return addCase(d).dosyaNo; });
 
-  return { ok: true, dosya: dosyaNolar.length, hareket: ornekHareketler.length };
+  var hareketler = [
+    // Ahmet — vekalet ücreti borçlandırma + avans tahsilat + masraf
+    { CariNo: cNo[0], DosyaNo: dNo[0], Yon: 'Borç', Kategori: 'Vekalet Ücreti', Tutar: 9000, Tarih: '2026-01-15', OdemeYontemi: '', BelgeNo: 'VU-001', Aciklama: 'Vekalet ücreti tahakkuku' },
+    { CariNo: cNo[0], DosyaNo: dNo[0], Yon: 'Alacak', Kategori: 'Avans', Tutar: 3000, Tarih: '2026-01-16', OdemeYontemi: 'Havale/EFT', BelgeNo: 'MKB-101', Aciklama: 'Açılış avansı' },
+    { CariNo: cNo[0], DosyaNo: dNo[0], Yon: 'Borç', Kategori: 'Dava Harcı', Tutar: 1200, Tarih: '2026-01-20', OdemeYontemi: '', BelgeNo: '', Aciklama: 'Dava açılış harcı (yansıtma)' },
+    // Ayşe
+    { CariNo: cNo[1], DosyaNo: dNo[1], Yon: 'Borç', Kategori: 'Vekalet Ücreti', Tutar: 5600, Tarih: '2026-02-03', OdemeYontemi: '', BelgeNo: 'VU-002', Aciklama: '' },
+    { CariNo: cNo[1], DosyaNo: dNo[1], Yon: 'Alacak', Kategori: 'Avans', Tutar: 2000, Tarih: '2026-02-05', OdemeYontemi: 'Nakit', BelgeNo: 'MKB-102', Aciklama: 'Peşin avans' },
+    // Mehmet
+    { CariNo: cNo[2], DosyaNo: dNo[2], Yon: 'Borç', Kategori: 'Vekalet Ücreti', Tutar: 12000, Tarih: '2026-01-28', OdemeYontemi: '', BelgeNo: 'VU-003', Aciklama: '' },
+    { CariNo: cNo[2], DosyaNo: dNo[2], Yon: 'Alacak', Kategori: 'Avans', Tutar: 4000, Tarih: '2026-02-01', OdemeYontemi: 'Kredi Kartı', BelgeNo: 'MKB-103', Aciklama: '' },
+    // Fatma — tamamlanan dosya, tam tahsilat
+    { CariNo: cNo[3], DosyaNo: dNo[3], Yon: 'Borç', Kategori: 'Vekalet Ücreti', Tutar: 12000, Tarih: '2025-12-10', OdemeYontemi: '', BelgeNo: 'VU-004', Aciklama: '' },
+    { CariNo: cNo[3], DosyaNo: dNo[3], Yon: 'Alacak', Kategori: 'Tahsilat', Tutar: 12000, Tarih: '2026-03-15', OdemeYontemi: 'Havale/EFT', BelgeNo: 'MKB-104', Aciklama: 'Karar sonrası tam tahsilat' },
+    // Tedarikçi (bilirkişi) — biz ona borçluyuz
+    { CariNo: cNo[5], DosyaNo: dNo[1], Yon: 'Alacak', Kategori: 'Diğer', Tutar: 1500, Tarih: '2026-02-12', OdemeYontemi: 'Havale/EFT', BelgeNo: '', Aciklama: 'Bilirkişi ücreti ödendi' }
+  ];
+  hareketler.forEach(function (h) { addHareket(h); });
+
+  return { ok: true, cari: cNo.length, dosya: dNo.length, hareket: hareketler.length };
 }
 
-/* ====================== BAŞLANGIÇ KURULUMU ====================== */
-
-/**
- * Editörden tek seferlik çalıştırılabilir: veritabanını oluşturur ve
- * e-tablo URL'sini loglar. Web app ilk açıldığında da otomatik kurulur.
- */
+/** Editörden tek seferlik çalıştırmak için. */
 function kurulumYap() {
   var ss = getDB_();
   Logger.log('Veritabanı hazır: ' + ss.getUrl());
