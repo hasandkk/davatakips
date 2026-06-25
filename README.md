@@ -5,6 +5,14 @@ ve muhasebe** web uygulaması. Müvekkil dosyalarını, dava türlerini ve aşam
 yönetir; gelir/gider hareketlerini kaydeder ve her muhasebe hareketinde ilgili
 dosyanın finans özetlerini (tahsilat, kalan bakiye, gider, net kâr) otomatik günceller.
 
+## ⚡ Hızlı deneme (Apps Script GEREKMEZ)
+
+Kurulumla uğraşmadan tüm uygulamayı denemek için: **`demo.html`** dosyasını
+indirip tarayıcıda (Chrome/Edge) **çift tıklayarak açın**. Veriler tarayıcının
+yerel belleğinde tutulur; dosya ekleme, muhasebe, otomatik hesaplama, örnek veri
+ve sıfırlama dahil her şey birebir çalışır. Beğenince aşağıdaki adımlarla gerçek
+sürümü (Apps Script + E-Tablo) bir kez kurarsınız — kod aynıdır.
+
 ## Özellikler
 
 - **📈 Özet panosu:** toplam dosya/açık dosya, toplam gelir-gider-net kâr, toplam
@@ -29,9 +37,9 @@ Tüketici Hakem Heyeti · Diğer
 
 1. https://script.google.com → **Yeni proje**.
 2. `Code.gs` içeriğini editördeki `Code.gs` dosyasına yapıştırın.
-3. **Dosya ekle → HTML** ile `Index`, `Stylesheet`, `JavaScript` adında üç HTML
-   dosyası oluşturup bu repodaki ilgili `.html` içeriklerini yapıştırın.
-   (Dosya adları tam olarak `Index`, `Stylesheet`, `JavaScript` olmalı.)
+3. **Dosya ekle → HTML** ile **`Index`** adında TEK bir HTML dosyası oluşturup
+   bu repodaki `Index.html` içeriğini yapıştırın. (Dosya adı tam olarak `Index`
+   olmalı; CSS ve JavaScript bu dosyanın içinde gömülüdür, ayrı dosya gerekmez.)
 4. Proje ayarlarından `appsscript.json`'ı bu repodaki ile değiştirin
    (Ayarlar → "appsscript.json manifest dosyasını editörde göster" işaretli olmalı).
 5. **Dağıt → Yeni dağıtım → Web uygulaması** seçin.
@@ -59,10 +67,9 @@ clasp deploy
 | Dosya | Açıklama |
 |-------|----------|
 | `Code.gs` | Backend: veritabanı kurulumu, CRUD, finans yeniden hesaplama, dashboard |
-| `Index.html` | Arayüz iskeleti (sekmeler, tablolar, modallar) |
-| `Stylesheet.html` | Tüm CSS |
-| `JavaScript.html` | İstemci mantığı (`google.script.run` çağrıları) |
+| `Index.html` | Tüm arayüz (HTML + CSS + JavaScript tek dosyada) |
 | `appsscript.json` | Manifest (zaman dilimi: Europe/Istanbul, web app ayarları) |
+| `demo.html` | Apps Script gerektirmeyen, tarayıcıda çalışan deneme sürümü (localStorage) |
 
 ## Notlar
 

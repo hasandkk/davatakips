@@ -50,16 +50,10 @@ var DEFAULT_ODEME = ['Nakit', 'Havale/EFT', 'Kredi Kartı', 'Çek'];
 /* ============================ WEB APP ============================ */
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Teminat Group | Dava & Muhasebe')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setFaviconUrl('https://www.google.com/images/icons/product/sheets-32.png');
-}
-
-/** HTML dosyalarını birbirine dahil etmek için (CSS / JS parçaları). */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 /* ====================== VERİTABANI KURULUMU ====================== */

@@ -113,19 +113,150 @@
     .loader-overlay::after { content:""; display:block; height:100%; width:40%; background:var(--brand); animation:slide 1s linear infinite; }
     @keyframes slide { from{margin-left:-40%;} to{margin-left:100%;} }
   </style>
+  <!-- =====================================================================
+       DEMO BACKEND — Apps Script GEREKTİRMEZ.
+       google.script.run taklit edilir; veriler tarayıcının localStorage'ında
+       saklanır. Bu dosyayı çift tıklayıp tarayıcıda açmanız yeterli.
+       (Gerçek sürümde bu blok yoktur; veriler Google E-Tablo'da tutulur.)
+  ====================================================================== -->
+  <script>
+  (function(){
+    var KEY = 'teminat_demo_db_v1';
+    function defaults(){ return {
+      davaTurleri:['Değer Kaybı','Hak Mahrumiyeti','Hasar Farkı','Kazanç Kaybı','DASK','Ayıplı Mal','Tüketici Hakem Heyeti','Diğer'],
+      asamalar:['Yeni Başvuru','Evrak Toplama','Başvuru Yapıldı','Dava Açıldı','Bilirkişi','Karar Bekleniyor','Karar Çıktı','Tahsilat','Kapandı','Reddedildi'],
+      gelirKategori:['Avans','Tahsilat','Vekalet Ücreti','Diğer Gelir'],
+      giderKategori:['Mahkeme Harcı','Bilirkişi Ücreti','Posta/Tebligat','Yol/Ulaşım','Danışmanlık','Ofis Gideri','Diğer Gider'],
+      odemeYontemi:['Nakit','Havale/EFT','Kredi Kartı','Çek']
+    }; }
+    function fresh(){ return { dosyalar:[], muhasebe:[], ayarlar:defaults() }; }
+    var db;
+    try { db = JSON.parse(localStorage.getItem(KEY)); } catch(e){ db=null; }
+    if(!db || !db.ayarlar){ db = fresh(); }
+    function persist(){ try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){} }
+
+    function num(v){ if(typeof v==='number') return v; if(v==null||v==='') return 0;
+      var s=(''+v).replace(/\./g,'').replace(',','.').replace(/[^\d.\-]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+    function stamp(){ var d=new Date(); function p(x){return ('0'+x).slice(-2);}
+      return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+    function today(){ var d=new Date(); function p(x){return ('0'+x).slice(-2);} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+
+    function computeCase(c){
+      var gelir=0, gider=0;
+      db.muhasebe.forEach(function(t){ if(''+t.DosyaNo===''+c.DosyaNo){ var x=num(t.Tutar);
+        if((''+t.Tur).toLowerCase().indexOf('gider')!==-1) gider+=x; else gelir+=x; } });
+      var anlasilan=num(c.AnlasilanUcret);
+      var o={}; for(var k in c) o[k]=c[k];
+      o.TahsilEdilen=gelir; o.KalanBakiye=anlasilan-gelir; o.ToplamGider=gider; o.NetKar=gelir-gider;
+      return o;
+    }
+    function allCases(){ return db.dosyalar.map(computeCase); }
+    function nextDosyaNo(){
+      var year=new Date().getFullYear(), max=0;
+      db.dosyalar.forEach(function(c){ var m=(''+c.DosyaNo).match(/(\d+)\s*$/); if(m) max=Math.max(max, parseInt(m[1],10)); });
+      return 'D-'+year+'-'+('000'+(max+1)).slice(-4);
+    }
+
+    var Backend = {
+      getMeta: function(){ return { spreadsheetUrl:'', demo:true,
+        davaTurleri:db.ayarlar.davaTurleri, asamalar:db.ayarlar.asamalar,
+        gelirKategori:db.ayarlar.gelirKategori, giderKategori:db.ayarlar.giderKategori, odemeYontemi:db.ayarlar.odemeYontemi }; },
+      bootstrapData: function(){ return { cases:allCases(), tx:db.muhasebe.slice(), dash:this.getDashboard() }; },
+      getDashboard: function(){
+        var cases=allCases(), tx=db.muhasebe;
+        var gelir=0,gider=0; tx.forEach(function(t){ var x=num(t.Tutar); if((''+t.Tur).toLowerCase().indexOf('gider')!==-1) gider+=x; else gelir+=x; });
+        var acik=0,kapali=0,tur={},asama={},bakiye=0;
+        cases.forEach(function(c){ var a=''+(c.Asama||'');
+          if(a==='Kapandı'||a==='Reddedildi') kapali++; else acik++;
+          var t=''+(c.DavaTuru||'Belirtilmemiş'); tur[t]=(tur[t]||0)+1;
+          asama[a||'Belirtilmemiş']=(asama[a||'Belirtilmemiş']||0)+1; bakiye+=num(c.KalanBakiye); });
+        return { toplamDosya:cases.length, acikDosya:acik, kapaliDosya:kapali, toplamGelir:gelir, toplamGider:gider,
+          netKar:gelir-gider, toplamAlacak:bakiye, turDagilim:tur, asamaDagilim:asama, sonIslemler:tx.slice(-8).reverse() };
+      },
+      addCase: function(data){
+        var dosyaNo=(data.DosyaNo&&(''+data.DosyaNo).trim())||nextDosyaNo();
+        db.dosyalar.push({ DosyaNo:dosyaNo, AcilisTarihi:data.AcilisTarihi||today(), MuvekkilAd:data.MuvekkilAd||'',
+          Telefon:data.Telefon||'', TC:data.TC||'', DavaTuru:data.DavaTuru||'', KarsiTaraf:data.KarsiTaraf||'',
+          Asama:data.Asama||'Yeni Başvuru', TazminatTalebi:num(data.TazminatTalebi), AnlasilanUcret:num(data.AnlasilanUcret),
+          Aciklama:data.Aciklama||'', SonGuncelleme:stamp() });
+        persist(); return { ok:true, dosyaNo:dosyaNo };
+      },
+      updateCase: function(data){
+        var c=db.dosyalar.filter(function(x){ return ''+x.DosyaNo===''+data.DosyaNo; })[0];
+        if(!c) return { ok:false, error:'Dosya bulunamadı.' };
+        ['AcilisTarihi','MuvekkilAd','Telefon','TC','DavaTuru','KarsiTaraf','Asama','Aciklama'].forEach(function(k){ if(data[k]!==undefined) c[k]=data[k]; });
+        c.TazminatTalebi=num(data.TazminatTalebi); c.AnlasilanUcret=num(data.AnlasilanUcret); c.SonGuncelleme=stamp();
+        persist(); return { ok:true };
+      },
+      deleteCase: function(dosyaNo){
+        db.dosyalar=db.dosyalar.filter(function(x){ return ''+x.DosyaNo!==''+dosyaNo; }); persist(); return { ok:true };
+      },
+      addTransaction: function(data){
+        var id='M'+Date.now()+Math.floor(Math.random()*1000);
+        db.muhasebe.push({ IslemID:id, Tarih:data.Tarih||today(), DosyaNo:data.DosyaNo||'', Tur:data.Tur||'Gelir',
+          Kategori:data.Kategori||'', Tutar:num(data.Tutar), OdemeYontemi:data.OdemeYontemi||'', Aciklama:data.Aciklama||'', KayitTarihi:stamp() });
+        persist(); return { ok:true, id:id };
+      },
+      deleteTransaction: function(id){
+        db.muhasebe=db.muhasebe.filter(function(x){ return ''+x.IslemID!==''+id; }); persist(); return { ok:true };
+      },
+      seedSampleData: function(){
+        var ornek=[
+          {MuvekkilAd:'Ahmet Yılmaz',Telefon:'0532 111 22 33',TC:'12345678901',DavaTuru:'Değer Kaybı',KarsiTaraf:'Anadolu Sigorta',Asama:'Dava Açıldı',TazminatTalebi:45000,AnlasilanUcret:9000,AcilisTarihi:'2026-01-15',Aciklama:'34 ABC 123 plakalı araç, kavşakta arkadan çarpma.'},
+          {MuvekkilAd:'Ayşe Demir',Telefon:'0541 222 33 44',TC:'23456789012',DavaTuru:'Hasar Farkı',KarsiTaraf:'Axa Sigorta',Asama:'Bilirkişi',TazminatTalebi:28000,AnlasilanUcret:5600,AcilisTarihi:'2026-02-03',Aciklama:'Eksper hasar bedelini düşük belirledi, fark talebi.'},
+          {MuvekkilAd:'Mehmet Kaya',Telefon:'0505 333 44 55',TC:'34567890123',DavaTuru:'Kazanç Kaybı',KarsiTaraf:'Allianz',Asama:'Karar Bekleniyor',TazminatTalebi:60000,AnlasilanUcret:12000,AcilisTarihi:'2026-01-28',Aciklama:'Ticari taksi, kaza nedeniyle 45 gün çalışamama.'},
+          {MuvekkilAd:'Fatma Şahin',Telefon:'0533 444 55 66',TC:'45678901234',DavaTuru:'DASK',KarsiTaraf:'DASK',Asama:'Tahsilat',TazminatTalebi:80000,AnlasilanUcret:12000,AcilisTarihi:'2025-12-10',Aciklama:'Deprem hasarı, eksik ödeme itirazı. Karar lehe çıktı.'},
+          {MuvekkilAd:'Hasan Çelik',Telefon:'0544 555 66 77',TC:'56789012345',DavaTuru:'Tüketici Hakem Heyeti',KarsiTaraf:'XYZ Mobilya',Asama:'Yeni Başvuru',TazminatTalebi:15000,AnlasilanUcret:3000,AcilisTarihi:'2026-06-01',Aciklama:'Ayıplı koltuk takımı, iade/bedel iadesi.'},
+          {MuvekkilAd:'Zeynep Arslan',Telefon:'0537 666 77 88',TC:'67890123456',DavaTuru:'Hak Mahrumiyeti',KarsiTaraf:'Ray Sigorta',Asama:'Kapandı',TazminatTalebi:35000,AnlasilanUcret:7000,AcilisTarihi:'2025-11-05',Aciklama:'Dosya tamamlandı, ücret tahsil edildi.'}
+        ];
+        var nos=ornek.map(function(d){ return Backend.addCase(d).dosyaNo; });
+        var hareket=[
+          {DosyaNo:nos[0],Tarih:'2026-01-16',Tur:'Gelir',Kategori:'Avans',Tutar:3000,OdemeYontemi:'Havale/EFT',Aciklama:'Dosya açılış avansı'},
+          {DosyaNo:nos[0],Tarih:'2026-01-20',Tur:'Gider',Kategori:'Mahkeme Harcı',Tutar:1200,OdemeYontemi:'Havale/EFT',Aciklama:'Dava açılış harcı'},
+          {DosyaNo:nos[1],Tarih:'2026-02-05',Tur:'Gelir',Kategori:'Avans',Tutar:2000,OdemeYontemi:'Nakit',Aciklama:'Peşin avans'},
+          {DosyaNo:nos[1],Tarih:'2026-02-12',Tur:'Gider',Kategori:'Bilirkişi Ücreti',Tutar:1500,OdemeYontemi:'Havale/EFT',Aciklama:'Bilirkişi avansı'},
+          {DosyaNo:nos[2],Tarih:'2026-02-01',Tur:'Gelir',Kategori:'Avans',Tutar:4000,OdemeYontemi:'Kredi Kartı',Aciklama:''},
+          {DosyaNo:nos[3],Tarih:'2026-03-15',Tur:'Gelir',Kategori:'Tahsilat',Tutar:12000,OdemeYontemi:'Havale/EFT',Aciklama:'Tazminat tahsil edildi, vekalet ücreti'},
+          {DosyaNo:nos[3],Tarih:'2025-12-15',Tur:'Gider',Kategori:'Bilirkişi Ücreti',Tutar:2000,OdemeYontemi:'Havale/EFT',Aciklama:''},
+          {DosyaNo:nos[5],Tarih:'2025-11-20',Tur:'Gelir',Kategori:'Tahsilat',Tutar:7000,OdemeYontemi:'Havale/EFT',Aciklama:'Tam tahsilat'},
+          {DosyaNo:nos[5],Tarih:'2025-11-08',Tur:'Gider',Kategori:'Posta/Tebligat',Tutar:350,OdemeYontemi:'Nakit',Aciklama:''},
+          {DosyaNo:'',Tarih:'2026-06-01',Tur:'Gider',Kategori:'Ofis Gideri',Tutar:4500,OdemeYontemi:'Havale/EFT',Aciklama:'Aylık ofis kirası (genel gider)'}
+        ];
+        hareket.forEach(function(h){ Backend.addTransaction(h); });
+        return { ok:true, dosya:nos.length, hareket:hareket.length };
+      },
+      sifirla: function(){ db=fresh(); persist(); return { ok:true }; }
+    };
+
+    // google.script.run taklidi: her erişimde taze bir "runner" döner.
+    function makeRunner(){
+      var okCb=function(){}, errCb=function(){};
+      var api={ withSuccessHandler:function(f){ okCb=f; return api; }, withFailureHandler:function(f){ errCb=f; return api; } };
+      Object.keys(Backend).forEach(function(m){
+        api[m]=function(){ var args=arguments;
+          setTimeout(function(){ try{ okCb(Backend[m].apply(Backend,args)); }catch(e){ errCb({message:e.message}); } }, 100);
+        };
+      });
+      return api;
+    }
+    window.google = { script: { get run(){ return makeRunner(); } } };
+    window.__DEMO__ = true;
+  })();
+  </script>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <div class="logo">TG</div>
       <div>
-        <div class="brand-title">Teminat Group</div>
-        <div class="brand-sub">Dava &amp; Muhasebe Yönetimi</div>
+        <div class="brand-title">Teminat Group <span style="font-size:11px;background:rgba(255,255,255,.25);padding:2px 7px;border-radius:6px;vertical-align:middle">DEMO</span></div>
+        <div class="brand-sub">Dava &amp; Muhasebe Yönetimi · yerel deneme sürümü</div>
       </div>
     </div>
     <div class="topbar-actions">
       <button class="ghost-btn" onclick="seedSample()" title="Deneme için örnek veri ekle"><span>🧪</span> Örnek Veri</button>
-      <a id="sheetLink" class="ghost-btn" target="_blank" title="Veri tablosunu aç"><span>📊</span> E-Tablo</a>
+      <button class="ghost-btn" onclick="demoReset()" title="Tüm deneme verilerini sil"><span>♻️</span> Sıfırla</button>
+      <a id="sheetLink" class="ghost-btn hidden" target="_blank">📊 E-Tablo</a>
     </div>
   </header>
 
@@ -506,6 +637,11 @@
       showLoader(true);
       var r = server(function(res){ showLoader(false); if(res&&res.ok){ toast(res.dosya+' dosya, '+res.hareket+' hareket eklendi','ok'); loadAll(); } else toast('Hata','err'); }, function(){ showLoader(false); });
       if(r) r.seedSampleData(); else showLoader(false);
+    }
+    function demoReset(){
+      if(!confirm('Tüm deneme verileri silinecek ve uygulama sıfırlanacak. Emin misiniz?')) return;
+      var r = server(function(){ location.reload(); }, function(){});
+      if(r) r.sifirla();
     }
 
     /* ===================== MODAL KONTROL ===================== */
