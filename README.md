@@ -71,3 +71,7 @@ clasp deploy
 - Dava türleri/aşamalar/kategoriler `Ayarlar` sayfasından özelleştirilebilir.
 - `recalcAll()` fonksiyonu (editörden çalıştırılır) tüm dosyaların finans
   özetlerini elle yeniden hesaplar — bakım amaçlı.
+- **Örnek veri:** Üst bardaki **🧪 Örnek Veri** butonu deneme için 6 dosya ve 10
+  muhasebe hareketi ekler. Aynısı editörden `seedSampleData()` ile de çalıştırılabilir.
+  Denemeyi bitirince bu kayıtları arayüzden silebilir veya E-Tablo'daki satırları
+  temizleyebilirsiniz.

@@ -459,6 +459,64 @@ function getDashboard() {
   };
 }
 
+/* ====================== ÖRNEK / DENEME VERİSİ ====================== */
+
+/**
+ * Deneme amaçlı örnek dosya ve muhasebe hareketleri ekler.
+ * Hem editörden hem de arayüzdeki "Örnek Veri" butonundan çalıştırılabilir.
+ */
+function seedSampleData() {
+  var ornekDosyalar = [
+    { MuvekkilAd: 'Ahmet Yılmaz', Telefon: '0532 111 22 33', TC: '12345678901',
+      DavaTuru: 'Değer Kaybı', KarsiTaraf: 'Anadolu Sigorta', Asama: 'Dava Açıldı',
+      TazminatTalebi: 45000, AnlasilanUcret: 9000, AcilisTarihi: '2026-01-15',
+      Aciklama: '34 ABC 123 plakalı araç, kavşakta arkadan çarpma.' },
+    { MuvekkilAd: 'Ayşe Demir', Telefon: '0541 222 33 44', TC: '23456789012',
+      DavaTuru: 'Hasar Farkı', KarsiTaraf: 'Axa Sigorta', Asama: 'Bilirkişi',
+      TazminatTalebi: 28000, AnlasilanUcret: 5600, AcilisTarihi: '2026-02-03',
+      Aciklama: 'Eksper hasar bedelini düşük belirledi, fark talebi.' },
+    { MuvekkilAd: 'Mehmet Kaya', Telefon: '0505 333 44 55', TC: '34567890123',
+      DavaTuru: 'Kazanç Kaybı', KarsiTaraf: 'Allianz', Asama: 'Karar Bekleniyor',
+      TazminatTalebi: 60000, AnlasilanUcret: 12000, AcilisTarihi: '2026-01-28',
+      Aciklama: 'Ticari taksi, kaza nedeniyle 45 gün çalışamama.' },
+    { MuvekkilAd: 'Fatma Şahin', Telefon: '0533 444 55 66', TC: '45678901234',
+      DavaTuru: 'DASK', KarsiTaraf: 'DASK', Asama: 'Tahsilat',
+      TazminatTalebi: 80000, AnlasilanUcret: 12000, AcilisTarihi: '2025-12-10',
+      Aciklama: 'Deprem hasarı, eksik ödeme itirazı. Karar lehe çıktı.' },
+    { MuvekkilAd: 'Hasan Çelik', Telefon: '0544 555 66 77', TC: '56789012345',
+      DavaTuru: 'Tüketici Hakem Heyeti', KarsiTaraf: 'XYZ Mobilya', Asama: 'Yeni Başvuru',
+      TazminatTalebi: 15000, AnlasilanUcret: 3000, AcilisTarihi: '2026-06-01',
+      Aciklama: 'Ayıplı koltuk takımı, iade/bedel iadesi.' },
+    { MuvekkilAd: 'Zeynep Arslan', Telefon: '0537 666 77 88', TC: '67890123456',
+      DavaTuru: 'Hak Mahrumiyeti', KarsiTaraf: 'Ray Sigorta', Asama: 'Kapandı',
+      TazminatTalebi: 35000, AnlasilanUcret: 7000, AcilisTarihi: '2025-11-05',
+      Aciklama: 'Dosya tamamlandı, ücret tahsil edildi.' }
+  ];
+
+  var dosyaNolar = [];
+  ornekDosyalar.forEach(function (d) {
+    var res = addCase(d);
+    dosyaNolar.push(res.dosyaNo);
+  });
+
+  // Örnek muhasebe hareketleri (dosyalara bağlı + genel)
+  var ornekHareketler = [
+    { DosyaNo: dosyaNolar[0], Tarih: '2026-01-16', Tur: 'Gelir', Kategori: 'Avans', Tutar: 3000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Dosya açılış avansı' },
+    { DosyaNo: dosyaNolar[0], Tarih: '2026-01-20', Tur: 'Gider', Kategori: 'Mahkeme Harcı', Tutar: 1200, OdemeYontemi: 'Havale/EFT', Aciklama: 'Dava açılış harcı' },
+    { DosyaNo: dosyaNolar[1], Tarih: '2026-02-05', Tur: 'Gelir', Kategori: 'Avans', Tutar: 2000, OdemeYontemi: 'Nakit', Aciklama: 'Peşin avans' },
+    { DosyaNo: dosyaNolar[1], Tarih: '2026-02-12', Tur: 'Gider', Kategori: 'Bilirkişi Ücreti', Tutar: 1500, OdemeYontemi: 'Havale/EFT', Aciklama: 'Bilirkişi avansı' },
+    { DosyaNo: dosyaNolar[2], Tarih: '2026-02-01', Tur: 'Gelir', Kategori: 'Avans', Tutar: 4000, OdemeYontemi: 'Kredi Kartı', Aciklama: '' },
+    { DosyaNo: dosyaNolar[3], Tarih: '2026-03-15', Tur: 'Gelir', Kategori: 'Tahsilat', Tutar: 12000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Tazminat tahsil edildi, vekalet ücreti' },
+    { DosyaNo: dosyaNolar[3], Tarih: '2025-12-15', Tur: 'Gider', Kategori: 'Bilirkişi Ücreti', Tutar: 2000, OdemeYontemi: 'Havale/EFT', Aciklama: '' },
+    { DosyaNo: dosyaNolar[5], Tarih: '2025-11-20', Tur: 'Gelir', Kategori: 'Tahsilat', Tutar: 7000, OdemeYontemi: 'Havale/EFT', Aciklama: 'Tam tahsilat' },
+    { DosyaNo: dosyaNolar[5], Tarih: '2025-11-08', Tur: 'Gider', Kategori: 'Posta/Tebligat', Tutar: 350, OdemeYontemi: 'Nakit', Aciklama: '' },
+    { DosyaNo: '', Tarih: '2026-06-01', Tur: 'Gider', Kategori: 'Ofis Gideri', Tutar: 4500, OdemeYontemi: 'Havale/EFT', Aciklama: 'Aylık ofis kirası (genel gider)' }
+  ];
+  ornekHareketler.forEach(function (h) { addTransaction(h); });
+
+  return { ok: true, dosya: dosyaNolar.length, hareket: ornekHareketler.length };
+}
+
 /* ====================== BAŞLANGIÇ KURULUMU ====================== */
 
 /**

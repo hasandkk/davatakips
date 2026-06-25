@@ -273,6 +273,16 @@ function removeTx(id){
   }).withFailureHandler(function(e){ showLoader(false); toast('Hata: '+e.message,'err'); }).deleteTransaction(id);
 }
 
+/* ===================== ÖRNEK VERİ ===================== */
+function seedSample(){
+  if(!confirm('Deneme için örnek dosyalar ve muhasebe hareketleri eklenecek. Devam edilsin mi?')) return;
+  showLoader(true);
+  google.script.run.withSuccessHandler(function(res){
+    if(res.ok){ toast(res.dosya+' dosya, '+res.hareket+' hareket eklendi','ok'); loadAll(); }
+    else { showLoader(false); toast('Hata','err'); }
+  }).withFailureHandler(function(e){ showLoader(false); toast('Hata: '+e.message,'err'); }).seedSampleData();
+}
+
 /* ===================== MODAL KONTROL ===================== */
 function openModal(id){ $(id).classList.add('open'); }
 function closeModal(id){ $(id).classList.remove('open'); }
