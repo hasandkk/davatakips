@@ -1,0 +1,6 @@
+{
+  "scriptId": "BURAYA_CLASP_CREATE_ILE_OLUSAN_SCRIPT_ID",
+  "rootDir": ".",
+  "fileExtension": "gs",
+  "filePushOrder": ["Code.gs"]
+}

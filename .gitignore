@@ -1,0 +1,5 @@
+# clasp gerçek yapılandırması (scriptId içerir) — örneği .clasp.json.example
+.clasp.json
+.clasprc.json
+node_modules/
+.DS_Store

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+  <!-- ÜST BAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">TG</div>
+      <div>
+        <div class="brand-title">Teminat Group</div>
+        <div class="brand-sub">Dava &amp; Muhasebe Yönetimi</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a id="sheetLink" class="ghost-btn" target="_blank" title="Veri tablosunu aç">
+        <span>📊</span> E-Tablo
+      </a>
+    </div>
+  </header>
+
+  <!-- SEKME ÇUBUĞU -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="dashboard">📈 Özet</button>
+    <button class="tab" data-tab="dosyalar">📁 Dosyalar</button>
+    <button class="tab" data-tab="muhasebe">💰 Muhasebe</button>
+  </nav>
+
+  <main class="content">
+
+    <!-- ===================== ÖZET ===================== -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="cards" id="statCards"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Dava Türüne Göre Dağılım</h3>
+          <div id="turDagilim" class="bar-list"></div>
+        </div>
+        <div class="panel">
+          <h3>Aşamaya Göre Dağılım</h3>
+          <div id="asamaDagilim" class="bar-list"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Son Hareketler</h3>
+        <div class="table-wrap">
+          <table id="sonIslemlerTable">
+            <thead><tr><th>Tarih</th><th>Dosya</th><th>Tür</th><th>Kategori</th><th class="num">Tutar</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DOSYALAR ===================== -->
+    <section id="tab-dosyalar" class="tab-panel">
+      <div class="toolbar">
+        <input type="search" id="dosyaSearch" placeholder="🔍 Müvekkil, dosya no, telefon ara...">
+        <select id="dosyaTurFilter"><option value="">Tüm Dava Türleri</option></select>
+        <select id="dosyaAsamaFilter"><option value="">Tüm Aşamalar</option></select>
+        <button class="primary-btn" onclick="openCaseModal()">+ Yeni Dosya</button>
+      </div>
+      <div class="table-wrap">
+        <table id="dosyaTable">
+          <thead>
+            <tr>
+              <th>Dosya No</th><th>Müvekkil</th><th>Dava Türü</th><th>Aşama</th>
+              <th class="num">Anlaşılan</th><th class="num">Tahsil</th>
+              <th class="num">Kalan</th><th class="num">Net Kâr</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="dosyaEmpty" class="empty hidden">Henüz dosya yok. “+ Yeni Dosya” ile ekleyin.</div>
+    </section>
+
+    <!-- ===================== MUHASEBE ===================== -->
+    <section id="tab-muhasebe" class="tab-panel">
+      <div class="cards" id="muhasebeCards"></div>
+      <div class="toolbar">
+        <input type="search" id="txSearch" placeholder="🔍 Açıklama, kategori, dosya ara...">
+        <select id="txTurFilter">
+          <option value="">Tümü</option><option value="Gelir">Gelir</option><option value="Gider">Gider</option>
+        </select>
+        <button class="primary-btn" onclick="openTxModal()">+ Yeni Hareket</button>
+      </div>
+      <div class="table-wrap">
+        <table id="txTable">
+          <thead>
+            <tr><th>Tarih</th><th>Dosya</th><th>Tür</th><th>Kategori</th>
+                <th>Ödeme</th><th>Açıklama</th><th class="num">Tutar</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="txEmpty" class="empty hidden">Henüz hareket yok. “+ Yeni Hareket” ile ekleyin.</div>
+    </section>
+  </main>
+
+  <!-- ===================== DOSYA MODAL ===================== -->
+  <div class="modal-overlay" id="caseModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="caseModalTitle">Yeni Dosya</h3>
+        <button class="close-btn" onclick="closeModal('caseModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="c_DosyaNo">
+        <div class="form-grid">
+          <label>Müvekkil Ad Soyad<input id="c_MuvekkilAd"></label>
+          <label>Telefon<input id="c_Telefon"></label>
+          <label>TC Kimlik No<input id="c_TC"></label>
+          <label>Açılış Tarihi<input type="date" id="c_AcilisTarihi"></label>
+          <label>Dava Türü<select id="c_DavaTuru"></select></label>
+          <label>Aşama<select id="c_Asama"></select></label>
+          <label>Karşı Taraf / Sigorta<input id="c_KarsiTaraf"></label>
+          <label>Tazminat Talebi (₺)<input type="number" step="0.01" id="c_TazminatTalebi"></label>
+          <label>Anlaşılan Ücret (₺)<input type="number" step="0.01" id="c_AnlasilanUcret"></label>
+        </div>
+        <label class="full">Açıklama<textarea id="c_Aciklama" rows="2"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button class="ghost-btn" onclick="closeModal('caseModal')">İptal</button>
+        <button class="primary-btn" id="caseSaveBtn" onclick="saveCase()">Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MUHASEBE MODAL ===================== -->
+  <div class="modal-overlay" id="txModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Yeni Muhasebe Hareketi</h3>
+        <button class="close-btn" onclick="closeModal('txModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="t_IslemID">
+        <div class="form-grid">
+          <label>Tarih<input type="date" id="t_Tarih"></label>
+          <label>Tür
+            <select id="t_Tur" onchange="onTxTurChange()">
+              <option value="Gelir">Gelir</option><option value="Gider">Gider</option>
+            </select>
+          </label>
+          <label>Dosya (opsiyonel)<select id="t_DosyaNo"><option value="">— Genel —</option></select></label>
+          <label>Kategori<select id="t_Kategori"></select></label>
+          <label>Tutar (₺)<input type="number" step="0.01" id="t_Tutar"></label>
+          <label>Ödeme Yöntemi<select id="t_OdemeYontemi"></select></label>
+        </div>
+        <label class="full">Açıklama<textarea id="t_Aciklama" rows="2"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button class="ghost-btn" onclick="closeModal('txModal')">İptal</button>
+        <button class="primary-btn" id="txSaveBtn" onclick="saveTx()">Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOSYA DETAY MODAL -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="detailTitle">Dosya Detayı</h3>
+        <button class="close-btn" onclick="closeModal('detailModal')">✕</button>
+      </div>
+      <div class="modal-body" id="detailBody"></div>
+      <div class="modal-foot">
+        <button class="ghost-btn" onclick="closeModal('detailModal')">Kapat</button>
+        <button class="primary-btn" id="detailEditBtn">Düzenle</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <div id="loader" class="loader-overlay"><div class="spinner"></div></div>
+
+  <?!= include('JavaScript'); ?>
+</body>
+</html>
