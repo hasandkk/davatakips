@@ -269,7 +269,7 @@
         <label>Telefon<input id="ca_Telefon"></label>
         <label>E-posta<input id="ca_Email"></label>
         <label>TC / Vergi No<input id="ca_KimlikVergiNo"></label>
-        <label>Açılış Bakiyesi (₺)<input type="number" step="0.01" id="ca_AcilisBakiye"><span class="hint">Cari önceden size borçluysa (+) yazın</span></label>
+        <label>Açılış Bakiyesi (₺)<input type="text" inputmode="decimal" id="ca_AcilisBakiye" placeholder="örn. 768,16"><span class="hint">Cari önceden size borçluysa (+) yazın · kuruş için virgül</span></label>
       </div>
       <label class="full">Adres<input id="ca_Adres"></label>
       <label class="full">Notlar<textarea id="ca_Notlar" rows="2"></textarea></label>
@@ -312,7 +312,7 @@
           </select>
         </label>
         <label>Kategori<select id="h_Kategori"></select></label>
-        <label>Tutar (₺)<input type="number" step="0.01" id="h_Tutar"></label>
+        <label>Tutar (₺)<input type="text" inputmode="decimal" id="h_Tutar" placeholder="örn. 768,16"></label>
         <label>Ödeme Yöntemi<select id="h_OdemeYontemi"></select></label>
         <label>Belge / Makbuz No<input id="h_BelgeNo"></label>
       </div>
@@ -341,8 +341,8 @@
         <label>Dava Türü<select id="c_DavaTuru"></select></label>
         <label>Aşama<select id="c_Asama"></select></label>
         <label>Karşı Taraf / Sigorta<input id="c_KarsiTaraf"></label>
-        <label>Tazminat Talebi (₺)<input type="number" step="0.01" id="c_TazminatTalebi"></label>
-        <label>Anlaşılan Ücret (₺)<input type="number" step="0.01" id="c_AnlasilanUcret"></label>
+        <label>Tazminat Talebi (₺)<input type="text" inputmode="decimal" id="c_TazminatTalebi" placeholder="örn. 768,16"></label>
+        <label>Anlaşılan Ücret (₺)<input type="text" inputmode="decimal" id="c_AnlasilanUcret" placeholder="örn. 768,16"></label>
       </div>
       <label class="full">Açıklama<textarea id="c_Aciklama" rows="2"></textarea></label>
     </div>
@@ -377,6 +377,8 @@
     function fmtMoney(n){ n=num(n); return n.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺'; }
     function esc(s){ return ('' + (s==null?'':s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
     function today(){ var d=new Date(); function p(x){return ('0'+x).slice(-2);} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+    // Sayıyı tutar giriş kutusuna Türkçe biçimde (virgül ondalık, binlik ayraç yok) yazar
+    function toInput(n){ n=Number(n)||0; return n===0?'':(''+n).replace('.',','); }
     function showLoader(b){ loaderCount=Math.max(0,loaderCount+(b?1:-1)); $('loader').classList.toggle('show',loaderCount>0); }
     function toast(msg,type){ var t=$('toast'); t.textContent=msg; t.className='toast show '+(type||''); setTimeout(function(){ t.className='toast'; },2800); }
     function banner(msg,type){ var b=$('banner'); if(!msg){ b.className='banner'; return; } b.innerHTML=msg; b.className='banner show '+(type||'err'); }
@@ -593,7 +595,7 @@
       $('cariModalTitle').textContent=c?('Cari Düzenle — '+c.Unvan):'Yeni Cari';
       $('ca_CariNo').value=c?c.CariNo:''; $('ca_Unvan').value=c?c.Unvan:''; $('ca_Tip').value=c?c.Tip:(META.cariTipleri[0]||'');
       $('ca_Telefon').value=c?c.Telefon:''; $('ca_Email').value=c?c.Email:''; $('ca_KimlikVergiNo').value=c?c.KimlikVergiNo:'';
-      $('ca_AcilisBakiye').value=c?c.AcilisBakiye:''; $('ca_Adres').value=c?c.Adres:''; $('ca_Notlar').value=c?c.Notlar:'';
+      $('ca_AcilisBakiye').value=c?toInput(c.AcilisBakiye):''; $('ca_Adres').value=c?c.Adres:''; $('ca_Notlar').value=c?c.Notlar:'';
       openModal('cariModal');
     }
     function saveCari(){
@@ -791,7 +793,7 @@
       if(h) $('h_Kategori').value = h.Kategori||'';
       setComboValue('h_CariAra','h_CariNo', h?h.CariNo:(prefill.CariNo||'')); onHarCariChange();
       $('h_DosyaNo').value = h?(h.DosyaNo||''):(prefill.DosyaNo||'');
-      $('h_Tutar').value = h?h.Tutar:'';
+      $('h_Tutar').value = h?toInput(h.Tutar):'';
       $('h_OdemeYontemi').value = h?(h.OdemeYontemi||META.odemeYontemi[0]||''):(META.odemeYontemi[0]||'');
       $('h_BelgeNo').value = h?(h.BelgeNo||''):'';
       $('h_Aciklama').value = h?(h.Aciklama||''):'';
@@ -805,7 +807,7 @@
     }
     function saveHar(){
       var cariNo=$('h_CariNo').value; if(!cariNo){ toast('Cari seçin','err'); return; }
-      var tutar=parseFloat($('h_Tutar').value); if(!tutar||tutar<=0){ toast('Geçerli tutar girin','err'); return; }
+      var tutar=num($('h_Tutar').value); if(!tutar||tutar<=0){ toast('Geçerli tutar girin','err'); return; }
       var id=$('h_IslemID').value;
       var yon=(''+$('h_Yon').value).toLowerCase().indexOf('alacak')!==-1?'Alacak':'Borç';
       var payload={ IslemID:id, Tarih:$('h_Tarih').value, CariNo:cariNo, DosyaNo:$('h_DosyaNo').value, Yon:yon,
@@ -885,7 +887,7 @@
       $('c_Avukat').value=d?(d.Avukat||''):'';
       $('c_AcilisTarihi').value=d&&d.AcilisTarihi?d.AcilisTarihi:today();
       $('c_DavaTuru').value=d?d.DavaTuru:(META.davaTurleri[0]||''); $('c_Asama').value=d?d.Asama:(META.asamalar[0]||'');
-      $('c_KarsiTaraf').value=d?d.KarsiTaraf:''; $('c_TazminatTalebi').value=d?d.TazminatTalebi:''; $('c_AnlasilanUcret').value=d?d.AnlasilanUcret:'';
+      $('c_KarsiTaraf').value=d?d.KarsiTaraf:''; $('c_TazminatTalebi').value=d?toInput(d.TazminatTalebi):''; $('c_AnlasilanUcret').value=d?toInput(d.AnlasilanUcret):'';
       $('c_Aciklama').value=d?d.Aciklama:'';
       openModal('caseModal');
     }
