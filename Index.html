@@ -158,7 +158,7 @@
         <button class="primary-btn" onclick="openCariModal()">+ Yeni Cari</button>
       </div>
       <div class="table-wrap"><table id="cariTable">
-        <thead><tr><th>Cari No</th><th>Ünvan</th><th>Tip</th><th>Telefon</th>
+        <thead><tr><th>Cari No</th><th>Ünvan</th><th>Tip</th>
           <th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th><th></th></tr></thead>
         <tbody></tbody></table></div>
       <div id="cariEmpty" class="empty hidden">Henüz cari yok. “+ Yeni Cari” ile ekleyin.</div>
@@ -504,7 +504,6 @@
           '<td onclick="openEkstre(\''+cn+'\')" style="cursor:pointer"><b>'+cn+'</b></td>'+
           '<td onclick="openEkstre(\''+cn+'\')" style="cursor:pointer">'+esc(c.Unvan)+'</td>'+
           '<td><span class="pill pill-tip">'+esc(c.Tip||'—')+'</span></td>'+
-          '<td>'+esc(c.Telefon||'')+'</td>'+
           '<td class="num neg">'+fmtMoney(a.acilis+a.borc)+'</td>'+
           '<td class="num pos">'+fmtMoney(a.alacak)+'</td>'+
           '<td class="num">'+bakiyeLabel(a.bakiye)+'</td>'+
