@@ -580,26 +580,38 @@
       AGG_D={}; var ad=(data&&data.aggD)||{}; for(var k2 in ad) AGG_D[k2]={borc:ad[k2][0]||0, alacak:ad[k2][1]||0};
       LASTACT=(data&&data.lastAct)||{};
       buildIndexes(); refreshCariSelects(); renderAll(); showLoader(false); banner('');
+      // Arka planda tüm hareketleri sessizce ön-yükle: sonraki cari/dosya
+      // tıklamaları beklemeden anında açılsın.
+      setTimeout(function(){ ensureAllHar(null, true); }, 300);
     }
     function loadAll(){
       showLoader(true);
       var r=server(applyInit, function(){ showLoader(false); });
       if(r) r.initData(); else showLoader(false);
     }
-    // Bir carinin hareketlerini gerektiğinde yükle (ekstre/dava detayı/düzenleme)
+    // Tüm hareketleri yükle (Muhasebe/Rapor + arka plan ön-yükleme). Tek seferde;
+    // eşzamanlı çağrılar tek isteğe toplanır. silent=true ise yükleme çubuğu gösterilmez.
+    var ALL_HAR_LOADING=false, ALL_HAR_CBS=[];
+    function ensureAllHar(cb, silent){
+      if(ALL_HAR){ if(cb) cb(); return; }
+      if(cb) ALL_HAR_CBS.push(cb);
+      if(ALL_HAR_LOADING) return;
+      ALL_HAR_LOADING=true; if(!silent) showLoader(true);
+      var fin=function(ok,m){ ALL_HAR_LOADING=false; if(!silent) showLoader(false);
+        if(ok){ ALL_HAR=matrixToObjects(m); HAR_COUNT=ALL_HAR.length; if($('tab-muhasebe').classList.contains('active')) renderHarList(); }
+        var cbs=ALL_HAR_CBS; ALL_HAR_CBS=[]; if(ok) cbs.forEach(function(f){ f(); }); };
+      var r=server(function(m){ fin(true,m); }, function(){ fin(false); });
+      if(!r){ ALL_HAR=[]; fin(true,{cols:[],rows:[]}); } else r.getAllHareketler();
+    }
+    // Bir carinin hareketlerini gerektiğinde yükle (ekstre/dava detayı/düzenleme).
+    // Arka planda tüm hareketler yükleniyorsa ona bağlanır; yoksa tek cari çeker.
     function ensureCariHar(cariNo, cb){
       if(CARI_HAR[cariNo]){ cb(); return; }
       if(ALL_HAR){ CARI_HAR[cariNo]=ALL_HAR.filter(function(h){ return ''+h.CariNo===''+cariNo; }); cb(); return; }
+      if(ALL_HAR_LOADING){ ensureAllHar(function(){ CARI_HAR[cariNo]=(ALL_HAR||[]).filter(function(h){ return ''+h.CariNo===''+cariNo; }); cb(); }); return; }
       showLoader(true);
       var r=server(function(m){ CARI_HAR[cariNo]=matrixToObjects(m); showLoader(false); cb(); }, function(){ showLoader(false); });
       if(r) r.getCariHareketler(cariNo); else { CARI_HAR[cariNo]=[]; showLoader(false); cb(); }
-    }
-    // Tüm hareketleri gerektiğinde yükle (Muhasebe/Rapor)
-    function ensureAllHar(cb){
-      if(ALL_HAR){ cb&&cb(); return; }
-      showLoader(true);
-      var r=server(function(m){ ALL_HAR=matrixToObjects(m); HAR_COUNT=ALL_HAR.length; showLoader(false); cb&&cb(); }, function(){ showLoader(false); });
-      if(r) r.getAllHareketler(); else { ALL_HAR=[]; showLoader(false); cb&&cb(); }
     }
     function renderAll(){ renderDashboard(); renderCariler(); renderCases(); renderMuhasebeCards(); renderOzet(); if(ALL_HAR){ renderHarList(); renderRapor(); } }
 
