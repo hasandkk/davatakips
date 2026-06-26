@@ -368,7 +368,7 @@
   <script>
     /* ===================== DURUM ===================== */
     var META = { spreadsheetUrl:'', davaTurleri:[], asamalar:[], cariTipleri:[], borcKategori:[], alacakKategori:[], odemeYontemi:[] };
-    var CARILER=[], CASES=[], HAR=[];
+    var CARILER=[], CASES=[], SON_HAR=[], ALL_HAR=null, CARI_HAR={}, HAR_COUNT=0;
     var loaderCount=0, loaderTimer=null;
 
     /* ===================== YARDIMCI ===================== */
@@ -392,31 +392,33 @@
     /* ===================== HESAPLAMALAR ===================== */
     // İndeks ve toplam önbellekleri — render sırasında her satır için tüm
     // hareketleri taramamak (yavaşlık) için tek geçişte hesaplanır.
+    // Özetler (AGG_C/AGG_D/LASTACT) SUNUCUDA hesaplanıp açılışta gelir; tüm
+    // hareketler indirilmez. cari/dosya indeksleri istemcide kurulur.
     var CARI_MAP={}, CASE_MAP={}, AGG_C={}, AGG_D={}, LASTACT={};
-    function recomputeAggregates(){
-      CARI_MAP={}; CASE_MAP={}; AGG_C={}; AGG_D={}; LASTACT={};
-      CARILER.forEach(function(c){ CARI_MAP[c.CariNo]=c; AGG_C[c.CariNo]={acilis:num(c.AcilisBakiye), borc:0, alacak:0}; });
-      CASES.forEach(function(d){ CASE_MAP[d.DosyaNo]=d; });
-      HAR.forEach(function(h){
-        var t=num(h.Tutar), b=isBorc(h);
-        var ac=AGG_C[h.CariNo]; if(!ac){ ac=AGG_C[h.CariNo]={acilis:0,borc:0,alacak:0}; }
-        if(b) ac.borc+=t; else ac.alacak+=t;
-        if(h.DosyaNo){
-          var ad=AGG_D[h.DosyaNo]; if(!ad){ ad=AGG_D[h.DosyaNo]={borc:0,alacak:0,hareketler:[]}; }
-          if(b) ad.borc+=t; else ad.alacak+=t; ad.hareketler.push(h);
-          var dt=''+h.Tarih; if(dt && (!LASTACT[h.DosyaNo] || dt>LASTACT[h.DosyaNo])) LASTACT[h.DosyaNo]=dt;
-        }
-      });
-    }
+    function buildIndexes(){ CARI_MAP={}; CASE_MAP={};
+      CARILER.forEach(function(c){ CARI_MAP[c.CariNo]=c; });
+      CASES.forEach(function(d){ CASE_MAP[d.DosyaNo]=d; }); }
     function cariByNo(no){ return CARI_MAP[no]; }
     function caseByNo(no){ return CASE_MAP[no]; }
     function cariAdi(no){ var c=CARI_MAP[no]; return c?c.Unvan:(no||'—'); }
     function dosyaEtiket(no){ if(!no) return '—'; var d=CASE_MAP[no]; return d?d.DosyaNo:no; }
     function isBorc(h){ return (''+h.Yon).toLowerCase().indexOf('alacak')===-1; }
-    function cariAgg(no){ var a=AGG_C[no]||{acilis:0,borc:0,alacak:0}; return { acilis:a.acilis, borc:a.borc, alacak:a.alacak, bakiye:a.acilis+a.borc-a.alacak }; }
-    function caseAgg(no){ var a=AGG_D[no]||{borc:0,alacak:0,hareketler:[]}; return { borc:a.borc, alacak:a.alacak, kalan:a.borc-a.alacak, hareketler:a.hareketler }; }
-    // Yerel değişiklikten sonra önbellekleri yenile + arayüzü çiz (sunucuya tekrar gitmeden)
-    function afterLocalChange(){ recomputeAggregates(); refreshCariSelects(); renderAll(); }
+    function cariAgg(no){ var a=AGG_C[no]||{borc:0,alacak:0}; var c=CARI_MAP[no]; var ac=c?num(c.AcilisBakiye):0;
+      return { acilis:ac, borc:a.borc||0, alacak:a.alacak||0, bakiye:ac+(a.borc||0)-(a.alacak||0) }; }
+    function caseAgg(no){ var a=AGG_D[no]||{borc:0,alacak:0}; return { borc:a.borc||0, alacak:a.alacak||0, kalan:(a.borc||0)-(a.alacak||0) }; }
+    // Bir hareketin AGG özetlerine etkisini uygula (sign=+1 ekle, -1 geri al)
+    function applyHarDelta(cariNo, dosyaNo, isB, tutar, sign){
+      if(cariNo){ var ac=AGG_C[cariNo]||(AGG_C[cariNo]={borc:0,alacak:0}); if(isB) ac.borc+=sign*tutar; else ac.alacak+=sign*tutar; }
+      if(dosyaNo){ var ad=AGG_D[dosyaNo]||(AGG_D[dosyaNo]={borc:0,alacak:0}); if(isB) ad.borc+=sign*tutar; else ad.alacak+=sign*tutar; }
+    }
+    function findHar(id){
+      for(var k in CARI_HAR){ var arr=CARI_HAR[k]; for(var i=0;i<arr.length;i++) if(''+arr[i].IslemID===''+id) return arr[i]; }
+      if(ALL_HAR){ for(var j=0;j<ALL_HAR.length;j++) if(''+ALL_HAR[j].IslemID===''+id) return ALL_HAR[j]; }
+      for(var s=0;s<SON_HAR.length;s++) if(''+SON_HAR[s].IslemID===''+id) return SON_HAR[s];
+      return null;
+    }
+    // Yerel değişiklikten sonra indeksleri yenile + arayüzü çiz (sunucuya tekrar gitmeden)
+    function afterLocalChange(){ buildIndexes(); refreshCariSelects(); renderAll(); }
     function bakiyeLabel(b){
       if(Math.abs(b)<0.005) return '<span class="mut">Kapalı</span>';
       if(b>0) return '<span class="neg">'+fmtMoney(b)+' borçlu</span>';
@@ -428,7 +430,9 @@
       btn.addEventListener('click', function(){
         document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
         document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
-        btn.classList.add('active'); var panel=$('tab-'+btn.dataset.tab); if(panel) panel.classList.add('active');
+        btn.classList.add('active'); var tab=btn.dataset.tab; var panel=$('tab-'+tab); if(panel) panel.classList.add('active');
+        if(tab==='muhasebe') ensureAllHar(renderHarList);
+        else if(tab==='rapor') ensureAllHar(renderRapor);
       });
     });
 
@@ -463,15 +467,35 @@
         fillSelect($('dosyaAvukatFilter'), META.avukatlar, true);
         onHarYonChange();
       }
-      CARILER=matrixToObjects(data&&data.cariler); CASES=matrixToObjects(data&&data.cases); HAR=matrixToObjects(data&&data.hareketler);
-      recomputeAggregates(); refreshCariSelects(); renderAll(); showLoader(false); banner('');
+      CARILER=matrixToObjects(data&&data.cariler); CASES=matrixToObjects(data&&data.cases);
+      SON_HAR=(data&&data.sonHar)||[];
+      ALL_HAR=null; CARI_HAR={}; HAR_COUNT=(data&&data.harCount)||0;
+      AGG_C={}; var ac=(data&&data.aggC)||{}; for(var k in ac) AGG_C[k]={borc:ac[k][0]||0, alacak:ac[k][1]||0};
+      AGG_D={}; var ad=(data&&data.aggD)||{}; for(var k2 in ad) AGG_D[k2]={borc:ad[k2][0]||0, alacak:ad[k2][1]||0};
+      LASTACT=(data&&data.lastAct)||{};
+      buildIndexes(); refreshCariSelects(); renderAll(); showLoader(false); banner('');
     }
     function loadAll(){
       showLoader(true);
       var r=server(applyInit, function(){ showLoader(false); });
       if(r) r.initData(); else showLoader(false);
     }
-    function renderAll(){ renderDashboard(); renderCariler(); renderCases(); renderHar(); renderRapor(); }
+    // Bir carinin hareketlerini gerektiğinde yükle (ekstre/dava detayı/düzenleme)
+    function ensureCariHar(cariNo, cb){
+      if(CARI_HAR[cariNo]){ cb(); return; }
+      if(ALL_HAR){ CARI_HAR[cariNo]=ALL_HAR.filter(function(h){ return ''+h.CariNo===''+cariNo; }); cb(); return; }
+      showLoader(true);
+      var r=server(function(m){ CARI_HAR[cariNo]=matrixToObjects(m); showLoader(false); cb(); }, function(){ showLoader(false); });
+      if(r) r.getCariHareketler(cariNo); else { CARI_HAR[cariNo]=[]; showLoader(false); cb(); }
+    }
+    // Tüm hareketleri gerektiğinde yükle (Muhasebe/Rapor)
+    function ensureAllHar(cb){
+      if(ALL_HAR){ cb&&cb(); return; }
+      showLoader(true);
+      var r=server(function(m){ ALL_HAR=matrixToObjects(m); HAR_COUNT=ALL_HAR.length; showLoader(false); cb&&cb(); }, function(){ showLoader(false); });
+      if(r) r.getAllHareketler(); else { ALL_HAR=[]; showLoader(false); cb&&cb(); }
+    }
+    function renderAll(){ renderDashboard(); renderCariler(); renderCases(); renderMuhasebeCards(); renderOzet(); if(ALL_HAR){ renderHarList(); renderRapor(); } }
 
     function refreshCariSelects(){
       // Müvekkil/cari seçimleri aramalı combo (setupCombo) ile yönetilir; burada
@@ -500,8 +524,8 @@
 
     /* ===================== ÖZET ===================== */
     function renderDashboard(){
-      var toplamTahsilat=0, toplamBorc=0; HAR.forEach(function(h){ if(isBorc(h)) toplamBorc+=num(h.Tutar); else toplamTahsilat+=num(h.Tutar); });
-      var netAlacak=0, netBorc=0; CARILER.forEach(function(c){ var b=cariAgg(c.CariNo).bakiye; if(b>0) netAlacak+=b; else netBorc+=-b; });
+      var toplamTahsilat=0, toplamBorc=0, netAlacak=0, netBorc=0;
+      CARILER.forEach(function(c){ var a=cariAgg(c.CariNo); toplamTahsilat+=a.alacak; toplamBorc+=a.borc; if(a.bakiye>0) netAlacak+=a.bakiye; else netBorc+=-a.bakiye; });
       var acik=CASES.filter(function(d){ var a=''+(d.Asama||''); return a!=='Kapandı'&&a!=='Reddedildi'; }).length;
       $('statCards').innerHTML=[
         card('Toplam Cari', CARILER.length, 'blue'),
@@ -517,8 +541,8 @@
         .sort(function(a,b){ return Math.abs(b.b)-Math.abs(a.b); }).slice(0,6);
       $('topCariler').innerHTML = top.length? top.map(function(x){
         return '<div class="bar-row"><div class="bar-top"><span>'+esc(x.ad)+'</span>'+bakiyeLabel(x.b)+'</div></div>'; }).join('') : '<div class="empty">Veri yok</div>';
-      var tb=$('sonHarTable').querySelector('tbody');
-      tb.innerHTML=HAR.slice(-8).reverse().map(function(h){
+      var tb=$('sonHarTable').querySelector('tbody'), son=(ALL_HAR?ALL_HAR.slice(-8).reverse():SON_HAR);
+      tb.innerHTML=son.map(function(h){
         return '<tr><td>'+esc(h.Tarih)+'</td><td>'+esc(cariAdi(h.CariNo))+'</td><td>'+esc(dosyaEtiket(h.DosyaNo))+'</td>'+
           '<td><span class="pill '+(isBorc(h)?'pill-borc':'pill-alacak')+'">'+esc(h.Yon)+'</span></td>'+
           '<td>'+esc(h.Kategori)+'</td><td class="num '+(isBorc(h)?'neg':'pos')+'">'+fmtMoney(h.Tutar)+'</td></tr>';
@@ -585,7 +609,7 @@
     /* ===================== CARİ EKSTRE ===================== */
     function buildLedger(cariNo){
       var c=cariByNo(cariNo), acilis=c?num(c.AcilisBakiye):0;
-      var list=HAR.filter(function(h){ return ''+h.CariNo===''+cariNo; }).slice().sort(function(a,b){ return (''+a.Tarih).localeCompare(''+b.Tarih)||(''+a.IslemID).localeCompare(''+b.IslemID); });
+      var list=(CARI_HAR[cariNo]||[]).slice().sort(function(a,b){ return (''+a.Tarih).localeCompare(''+b.Tarih)||(''+a.IslemID).localeCompare(''+b.IslemID); });
       var run=acilis, rows=[];
       list.forEach(function(h){ var b=isBorc(h)?num(h.Tutar):0, a=!isBorc(h)?num(h.Tutar):0; run+=b-a; rows.push({h:h, borc:b, alacak:a, bakiye:run}); });
       return { acilis:acilis, rows:rows, son:run };
@@ -627,7 +651,8 @@
       var qel=$(panelId+'_q'), sel=$(panelId+'_sort');
       bodyEl.innerHTML=ledgerTableHtml(st.cariNo, st.silButon, st.vurguDosya, { q:qel?qel.value:'', sortDesc: !!(sel&&sel.value==='desc') });
     }
-    function openEkstre(cariNo){
+    function openEkstre(cariNo){ if(!cariByNo(cariNo)) return; ensureCariHar(cariNo, function(){ openEkstre_(cariNo); }); }
+    function openEkstre_(cariNo){
       var c=cariByNo(cariNo); if(!c) return;
       var agg=cariAgg(cariNo);
       $('ekstreTitle').textContent='Cari Ekstresi — '+c.Unvan;
@@ -684,13 +709,12 @@
       var davalar=CASES.filter(function(d){ return ''+d.CariNo===''+cariNo; });
       $('h_DosyaNo').innerHTML='<option value="">— Yok —</option>'+davalar.map(function(d){ return '<option value="'+esc(d.DosyaNo)+'">'+esc(d.DosyaNo)+' · '+esc(d.DavaTuru)+'</option>'; }).join('');
     }
-    function renderHar(){ renderMuhasebeCards(); renderOzet(); renderHarList(); }
     function renderMuhasebeCards(){
-      var tahsilat=0, borc=0; HAR.forEach(function(h){ if(isBorc(h)) borc+=num(h.Tutar); else tahsilat+=num(h.Tutar); });
-      var netAlacak=0, borcluSayi=0; CARILER.forEach(function(c){ var b=cariAgg(c.CariNo).bakiye; if(b>0){ netAlacak+=b; borcluSayi++; } });
+      var tahsilat=0, borc=0, netAlacak=0, borcluSayi=0;
+      CARILER.forEach(function(c){ var a=cariAgg(c.CariNo); tahsilat+=a.alacak; borc+=a.borc; if(a.bakiye>0){ netAlacak+=a.bakiye; borcluSayi++; } });
       $('muhasebeCards').innerHTML=[card('Toplam Tahsilat (Alacak)',fmtMoney(tahsilat),'green'),
         card('Toplam Borçlandırma',fmtMoney(borc),'red'), card('Net Alacağımız',fmtMoney(netAlacak),'blue'),
-        card('Borçlu Cari',borcluSayi,'amber'), card('Toplam Hareket',HAR.length,'amber')].join('');
+        card('Borçlu Cari',borcluSayi,'amber'), card('Toplam Hareket',HAR_COUNT||0,'amber')].join('');
     }
     function renderOzet(){
       var q=($('ozetSearch').value||'').toLowerCase(), durum=$('ozetDurum').value, sort=$('ozetSort').value;
@@ -723,7 +747,8 @@
       var q=($('harSearch').value||'').toLowerCase(), cf=$('harCariFilter').value, yf=$('harYonFilter').value;
       var bas=$('harBas').value, bit=$('harBit').value;
       var filtreVar=!!(q||cf||yf||bas||bit);
-      var rows=HAR.filter(function(h){ var hay=(cariAdi(h.CariNo)+' '+h.Kategori+' '+h.Aciklama+' '+h.BelgeNo+' '+dosyaEtiket(h.DosyaNo)+' '+h.Tutar).toLowerCase();
+      if(!ALL_HAR){ $('harSayac').textContent='Hareketler yükleniyor…'; ensureAllHar(renderHarList); return; }
+      var rows=ALL_HAR.filter(function(h){ var hay=(cariAdi(h.CariNo)+' '+h.Kategori+' '+h.Aciklama+' '+h.BelgeNo+' '+dosyaEtiket(h.DosyaNo)+' '+h.Tutar).toLowerCase();
         if(q && hay.indexOf(q)===-1) return false;
         if(cf && ''+h.CariNo!==''+cf) return false;
         if(yf && (isBorc(h)?'Borç':'Alacak')!==yf) return false;
@@ -761,7 +786,7 @@
       var t=document.querySelector('#harModal .modal-head h3'); if(t) t.textContent = h?'Hareketi Düzenle':'Yeni Cari Hareketi';
       openModal('harModal');
     }
-    function openHarEdit(islemId){ var h=HAR.filter(function(x){ return ''+x.IslemID===''+islemId; })[0]; if(h) openHarModal({}, h); }
+    function openHarEdit(islemId){ var h=findHar(islemId); if(h) openHarModal({}, h); }
     function refreshLedgersIfOpen(){
       if($('ekstreModal').classList.contains('open')) renderLedgerPanel('ekstre');
       if($('caseDetailModal').classList.contains('open')) renderLedgerPanel('caseLedger');
@@ -774,12 +799,24 @@
       var payload={ IslemID:id, Tarih:$('h_Tarih').value, CariNo:cariNo, DosyaNo:$('h_DosyaNo').value, Yon:yon,
         Kategori:$('h_Kategori').value, Tutar:$('h_Tutar').value, OdemeYontemi:$('h_OdemeYontemi').value, BelgeNo:$('h_BelgeNo').value, Aciklama:$('h_Aciklama').value };
       $('harSaveBtn').disabled=true; showLoader(true);
+      var tut=num(payload.Tutar), isB=(yon==='Borç'), dosya=payload.DosyaNo||'';
       var r=server(function(res){ $('harSaveBtn').disabled=false; showLoader(false);
         if(res&&res.ok){
-          if(id){ var h=HAR.filter(function(x){ return ''+x.IslemID===''+id; })[0];
-            if(h){ h.Tarih=payload.Tarih||today(); h.CariNo=payload.CariNo; h.DosyaNo=payload.DosyaNo||''; h.Yon=yon; h.Kategori=payload.Kategori||''; h.Tutar=num(payload.Tutar); h.OdemeYontemi=payload.OdemeYontemi||''; h.BelgeNo=payload.BelgeNo||''; h.Aciklama=payload.Aciklama||''; } }
-          else { HAR.push({ IslemID:res.id, Tarih:payload.Tarih||today(), CariNo:payload.CariNo, DosyaNo:payload.DosyaNo||'',
-            Yon:yon, Kategori:payload.Kategori||'', Tutar:num(payload.Tutar), OdemeYontemi:payload.OdemeYontemi||'', BelgeNo:payload.BelgeNo||'', Aciklama:payload.Aciklama||'' }); }
+          if(id){ var old=findHar(id);
+            if(old){ applyHarDelta(old.CariNo, old.DosyaNo, isBorc(old), num(old.Tutar), -1);
+              var oCari=old.CariNo;
+              old.Tarih=payload.Tarih||today(); old.CariNo=cariNo; old.DosyaNo=dosya; old.Yon=yon; old.Kategori=payload.Kategori||''; old.Tutar=tut; old.OdemeYontemi=payload.OdemeYontemi||''; old.BelgeNo=payload.BelgeNo||''; old.Aciklama=payload.Aciklama||'';
+              applyHarDelta(cariNo, dosya, isB, tut, 1);
+              if(oCari!==cariNo){ if(CARI_HAR[oCari]) CARI_HAR[oCari]=CARI_HAR[oCari].filter(function(x){ return x!==old; }); if(CARI_HAR[cariNo]) CARI_HAR[cariNo].push(old); }
+            }
+          } else {
+            var newH={ IslemID:res.id, Tarih:payload.Tarih||today(), CariNo:cariNo, DosyaNo:dosya, Yon:yon, Kategori:payload.Kategori||'', Tutar:tut, OdemeYontemi:payload.OdemeYontemi||'', BelgeNo:payload.BelgeNo||'', Aciklama:payload.Aciklama||'' };
+            applyHarDelta(cariNo, dosya, isB, tut, 1);
+            if(dosya && (!LASTACT[dosya] || newH.Tarih>LASTACT[dosya])) LASTACT[dosya]=newH.Tarih;
+            if(CARI_HAR[cariNo]) CARI_HAR[cariNo].push(newH);
+            if(ALL_HAR){ ALL_HAR.push(newH); HAR_COUNT=ALL_HAR.length; } else HAR_COUNT=(HAR_COUNT||0)+1;
+            SON_HAR.unshift(newH); if(SON_HAR.length>8) SON_HAR.pop();
+          }
           closeModal('harModal'); toast(id?'Hareket güncellendi':'Hareket eklendi','ok'); afterLocalChange(); refreshLedgersIfOpen();
         } else toast((res&&res.error)||'Hata','err'); },
         function(){ $('harSaveBtn').disabled=false; showLoader(false); });
@@ -787,7 +824,14 @@
     }
     function removeHar(id){
       if(!confirm('Bu hareketi silmek istediğinize emin misiniz?')) return; showLoader(true);
-      var r=server(function(res){ showLoader(false); if(res&&res.ok){ HAR=HAR.filter(function(h){ return ''+h.IslemID!==''+id; }); toast('Hareket silindi','ok'); afterLocalChange(); refreshLedgersIfOpen(); } else toast((res&&res.error)||'Hata','err'); }, function(){ showLoader(false); });
+      var r=server(function(res){ showLoader(false); if(res&&res.ok){
+          var old=findHar(id);
+          if(old){ applyHarDelta(old.CariNo, old.DosyaNo, isBorc(old), num(old.Tutar), -1);
+            if(CARI_HAR[old.CariNo]) CARI_HAR[old.CariNo]=CARI_HAR[old.CariNo].filter(function(x){ return x!==old; }); }
+          if(ALL_HAR){ ALL_HAR=ALL_HAR.filter(function(h){ return ''+h.IslemID!==''+id; }); HAR_COUNT=ALL_HAR.length; } else HAR_COUNT=Math.max(0,(HAR_COUNT||1)-1);
+          SON_HAR=SON_HAR.filter(function(h){ return ''+h.IslemID!==''+id; });
+          toast('Hareket silindi','ok'); afterLocalChange(); refreshLedgersIfOpen();
+        } else toast((res&&res.error)||'Hata','err'); }, function(){ showLoader(false); });
       if(r) r.deleteHareket(id); else showLoader(false);
     }
 
@@ -853,7 +897,8 @@
       var r=server(function(res){ showLoader(false); if(res&&res.ok){ CASES=CASES.filter(function(d){ return ''+d.DosyaNo!==''+dosyaNo; }); toast('Dosya silindi','ok'); afterLocalChange(); } else toast((res&&res.error)||'Hata','err'); }, function(){ showLoader(false); });
       if(r) r.deleteCase(dosyaNo); else showLoader(false);
     }
-    function openCaseDetail(dosyaNo){
+    function openCaseDetail(dosyaNo){ var d0=caseByNo(dosyaNo); if(!d0) return; ensureCariHar(d0.CariNo, function(){ openCaseDetail_(dosyaNo); }); }
+    function openCaseDetail_(dosyaNo){
       var d=caseByNo(dosyaNo); if(!d) return; var ag=caseAgg(dosyaNo); var cari=cariByNo(d.CariNo); var cariB=cariAgg(d.CariNo);
       $('caseDetailTitle').textContent=d.DosyaNo+' — '+cariAdi(d.CariNo);
       var info=[['Müvekkil (Cari)',cariAdi(d.CariNo)],['Telefon',cari?cari.Telefon:''],['Avukat',d.Avukat],['Dava Türü',d.DavaTuru],['Aşama',d.Asama],
@@ -885,7 +930,7 @@
         return '<div class="bar-row"><div class="bar-top"><span>'+esc(x[0])+'</span><b>'+fmtMoney(x[1])+'</b></div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div></div>'; }).join('');
     }
     function raporVeri(ym){
-      var inMonth=HAR.filter(function(h){ return (''+h.Tarih).slice(0,7)===ym; });
+      var inMonth=(ALL_HAR||[]).filter(function(h){ return (''+h.Tarih).slice(0,7)===ym; });
       var borc=0,alacak=0,bk={},ak={};
       inMonth.forEach(function(h){ var t=num(h.Tutar); if(isBorc(h)){ borc+=t; bk[h.Kategori||'—']=(bk[h.Kategori||'—']||0)+t; } else { alacak+=t; ak[h.Kategori||'—']=(ak[h.Kategori||'—']||0)+t; } });
       var yeniDava=CASES.filter(function(d){ return (''+d.AcilisTarihi).slice(0,7)===ym; }).length;
@@ -894,6 +939,7 @@
     function renderRapor(){
       var ym=$('raporAy').value;
       if(!ym){ var d=new Date(); ym=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); $('raporAy').value=ym; }
+      if(!ALL_HAR){ $('raporHarBaslik').textContent='Hareketler yükleniyor…'; ensureAllHar(renderRapor); return; }
       var R=raporVeri(ym);
       $('raporCards').innerHTML=[
         card('Borçlandırma',fmtMoney(R.borc),'red'),

@@ -168,15 +168,17 @@ function bootstrapData() {
 
 /**
  * Bir sayfayı { cols:[başlıklar], rows:[[...],[...]] } biçiminde (matris)
- * döndürür. Nesne yerine dizi gönderildiği için JSON çok daha küçük ve
- * serileştirme hızlı olur (büyük veride sayfa açılışını hızlandırır).
+ * döndürür. İsteğe bağlı colName/value ile filtreler. Nesne yerine dizi
+ * gönderildiği için JSON çok daha küçük ve serileştirme hızlıdır.
  */
-function sheetMatrix_(name) {
+function sheetMatrixFilter_(name, colName, value) {
   var values = getSheet_(name).getDataRange().getValues();
   if (!values.length) return { cols: [], rows: [] };
-  var cols = values[0], rows = [];
+  var cols = values[0], fIdx = colName ? cols.indexOf(colName) : -1, rows = [];
   for (var r = 1; r < values.length; r++) {
-    var src = values[r], out = [], empty = true;
+    var src = values[r];
+    if (fIdx >= 0 && '' + src[fIdx] !== '' + value) continue;
+    var out = [], empty = true;
     for (var c = 0; c < cols.length; c++) {
       var v = src[c];
       if (v instanceof Date) v = Utilities.formatDate(v, 'Europe/Istanbul', 'yyyy-MM-dd');
@@ -187,14 +189,49 @@ function sheetMatrix_(name) {
   }
   return { cols: cols, rows: rows };
 }
+function sheetMatrix_(name) { return sheetMatrixFilter_(name, null, null); }
 
-/** Açılışta tek çağrı: ayarlar + tüm veri (matris). İki tur yerine bir tur. */
+/** Bir cariye ait hareketler (matris) — ekstre açılırken tembel yüklenir. */
+function getCariHareketler(cariNo) { return sheetMatrixFilter_(SHEET_HAREKETLER, 'CariNo', cariNo); }
+/** Tüm hareketler (matris) — Muhasebe/Rapor sekmesi ilk açıldığında yüklenir. */
+function getAllHareketler() { return sheetMatrix_(SHEET_HAREKETLER); }
+
+/**
+ * Açılış verisi: ayarlar + cariler + davalar + SUNUCUDA hesaplanmış özetler
+ * (cari ve dava bazında borç/alacak + son işlem tarihi) + son 8 hareket.
+ * 4106 hareketin tamamı GÖNDERİLMEZ; sayfa çok hızlı açılır.
+ */
 function initData() {
+  var harVals = getSheet_(SHEET_HAREKETLER).getDataRange().getValues();
+  var aggC = {}, aggD = {}, lastAct = {}, sonHar = [];
+  if (harVals.length > 1) {
+    var h = harVals[0], ci = h.indexOf('CariNo'), di = h.indexOf('DosyaNo'),
+        yi = h.indexOf('Yon'), ti = h.indexOf('Tutar'), tri = h.indexOf('Tarih');
+    for (var r = 1; r < harVals.length; r++) {
+      var row = harVals[r], cariNo = '' + row[ci];
+      var t = toNumber_(row[ti]);
+      var isB = ('' + row[yi]).toLowerCase().indexOf('alacak') === -1;
+      if (cariNo !== '') { var ac = aggC[cariNo] || (aggC[cariNo] = [0, 0]); if (isB) ac[0] += t; else ac[1] += t; }
+      var dosyaNo = '' + row[di];
+      if (dosyaNo !== '') {
+        var ad = aggD[dosyaNo] || (aggD[dosyaNo] = [0, 0]); if (isB) ad[0] += t; else ad[1] += t;
+        var dt = row[tri]; if (dt instanceof Date) dt = Utilities.formatDate(dt, 'Europe/Istanbul', 'yyyy-MM-dd'); dt = '' + dt;
+        if (dt && (!lastAct[dosyaNo] || dt > lastAct[dosyaNo])) lastAct[dosyaNo] = dt;
+      }
+    }
+    for (var r2 = Math.max(1, harVals.length - 8); r2 < harVals.length; r2++) {
+      var o = {};
+      for (var c = 0; c < h.length; c++) { var v = harVals[r2][c]; if (v instanceof Date) v = Utilities.formatDate(v, 'Europe/Istanbul', 'yyyy-MM-dd'); o[h[c]] = v; }
+      sonHar.push(o);
+    }
+    sonHar.reverse();
+  }
   return {
     meta: getMeta(),
     cariler: sheetMatrix_(SHEET_CARILER),
     cases: sheetMatrix_(SHEET_DOSYALAR),
-    hareketler: sheetMatrix_(SHEET_HAREKETLER)
+    aggC: aggC, aggD: aggD, lastAct: lastAct, sonHar: sonHar,
+    harCount: Math.max(0, harVals.length - 1)
   };
 }
 
