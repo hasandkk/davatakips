@@ -57,6 +57,11 @@
     .pill-borc{background:#fef2f2;color:#b91c1c;} .pill-alacak{background:#ecfdf5;color:#047857;}
     .pill-tip{background:#f5f3ff;color:#6d28d9;}
     .empty { text-align:center; color:var(--muted); padding:40px; } .hidden { display:none !important; }
+    .combo { position:relative; }
+    .combo-list { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); max-height:210px; overflow-y:auto; z-index:30; display:none; margin-top:3px; }
+    .combo-list.open { display:block; }
+    .combo-item { padding:8px 11px; cursor:pointer; font-size:13px; } .combo-item:hover { background:#f0fdfa; }
+    .combo-empty { padding:10px 11px; color:var(--muted); font-size:13px; }
     .modal-overlay { position:fixed; inset:0; background:rgba(17,24,39,.55); display:none; align-items:flex-start; justify-content:center; padding:24px 14px; z-index:50; overflow-y:auto; }
     .modal-overlay.open { display:flex; }
     .modal { background:#fff; border-radius:14px; width:100%; max-width:660px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
@@ -136,10 +141,11 @@
         <input type="search" id="dosyaSearch" placeholder="🔍 Müvekkil, dosya no ara...">
         <select id="dosyaTurFilter"><option value="">Tüm Dava Türleri</option></select>
         <select id="dosyaAsamaFilter"><option value="">Tüm Aşamalar</option></select>
+        <select id="dosyaAvukatFilter"><option value="">Tüm Avukatlar</option></select>
         <button class="primary-btn" onclick="openCaseModal()">+ Yeni Dosya</button>
       </div>
       <div class="table-wrap"><table id="dosyaTable">
-        <thead><tr><th>Dosya No</th><th>Müvekkil (Cari)</th><th>Dava Türü</th><th>Aşama</th>
+        <thead><tr><th>Dosya No</th><th>Müvekkil (Cari)</th><th>Avukat</th><th>Dava Türü</th><th>Aşama</th><th>Son İşlem</th>
           <th class="num">Tahakkuk</th><th class="num">Tahsilat</th><th class="num">Kalan</th><th></th></tr></thead>
         <tbody></tbody></table></div>
       <div id="dosyaEmpty" class="empty hidden">Henüz dosya yok. “+ Yeni Dosya” ile ekleyin.</div>
@@ -204,7 +210,13 @@
     <div class="modal-body">
       <input type="hidden" id="h_IslemID">
       <div class="form-grid">
-        <label>Cari<select id="h_CariNo" onchange="onHarCariChange()"></select></label>
+        <label>Cari — ara
+          <div class="combo">
+            <input id="h_CariAra" placeholder="İsim/telefon yazıp seçin..." autocomplete="off">
+            <input type="hidden" id="h_CariNo">
+            <div class="combo-list" id="h_CariList"></div>
+          </div>
+        </label>
         <label>Dava (opsiyonel)<select id="h_DosyaNo"><option value="">— Yok —</option></select></label>
         <label>Tarih<input type="date" id="h_Tarih"></label>
         <label>Yön
@@ -230,7 +242,15 @@
     <div class="modal-body">
       <input type="hidden" id="c_DosyaNo">
       <div class="form-grid">
-        <label>Müvekkil (Cari)<select id="c_CariNo"></select><span class="hint">Cari yoksa önce “Cariler”den ekleyin</span></label>
+        <label>Müvekkil (Cari) — ara
+          <div class="combo">
+            <input id="c_CariAra" placeholder="İsim/telefon yazıp seçin..." autocomplete="off">
+            <input type="hidden" id="c_CariNo">
+            <div class="combo-list" id="c_CariList"></div>
+          </div>
+          <span class="hint">Cari yoksa önce “Cariler”den ekleyin</span>
+        </label>
+        <label>Avukat<select id="c_Avukat"><option value="">— Avukat seçin —</option></select></label>
         <label>Açılış Tarihi<input type="date" id="c_AcilisTarihi"></label>
         <label>Dava Türü<select id="c_DavaTuru"></select></label>
         <label>Aşama<select id="c_Asama"></select></label>
@@ -326,10 +346,12 @@
           fillSelect($('ca_Tip'), META.cariTipleri);
           fillSelect($('c_DavaTuru'), META.davaTurleri);
           fillSelect($('c_Asama'), META.asamalar);
+          fillSelect($('c_Avukat'), META.avukatlar, true);
           fillSelect($('h_OdemeYontemi'), META.odemeYontemi);
           fillSelect($('cariTipFilter'), META.cariTipleri, true);
           fillSelect($('dosyaTurFilter'), META.davaTurleri, true);
           fillSelect($('dosyaAsamaFilter'), META.asamalar, true);
+          fillSelect($('dosyaAvukatFilter'), META.avukatlar, true);
           onHarYonChange();
           loadAll();
         }, function(){ showLoader(false); });
@@ -349,12 +371,32 @@
     function renderAll(){ renderDashboard(); renderCariler(); renderCases(); renderHar(); }
 
     function refreshCariSelects(){
-      var opts='<option value="">— Cari seçin —</option>'+CARILER.map(function(c){ return '<option value="'+esc(c.CariNo)+'">'+esc(c.Unvan)+' ('+esc(c.CariNo)+')</option>'; }).join('');
-      $('h_CariNo').innerHTML=opts;
-      $('c_CariNo').innerHTML=opts;
-      fillSelect($('harCariFilter'), CARILER.map(function(c){ return c.Unvan; }), true);
-      // harCariFilter value'larını CariNo yapmak için yeniden kur
+      // Müvekkil/cari seçimleri aramalı combo (setupCombo) ile yönetilir; burada
+      // yalnızca muhasebe filtresi (normal select) güncellenir.
       $('harCariFilter').innerHTML='<option value="">Tüm Cariler</option>'+CARILER.map(function(c){ return '<option value="'+esc(c.CariNo)+'">'+esc(c.Unvan)+'</option>'; }).join('');
+    }
+    // Aramalı cari seçici (combobox)
+    function setupCombo(araId, listId, hiddenId, onSelect){
+      var ara=$(araId), list=$(listId), hid=$(hiddenId); if(!ara) return;
+      function render(){
+        var q=(ara.value||'').toLowerCase();
+        var items=CARILER.filter(function(c){ return (c.Unvan+' '+c.CariNo+' '+(c.Telefon||'')).toLowerCase().indexOf(q)!==-1; });
+        list.innerHTML=items.slice(0,60).map(function(c){ return '<div class="combo-item" data-no="'+esc(c.CariNo)+'">'+esc(c.Unvan)+' <span class="mut">('+esc(c.CariNo)+')</span></div>'; }).join('')||'<div class="combo-empty">Eşleşen cari yok</div>';
+        list.classList.add('open');
+      }
+      ara.addEventListener('focus', render);
+      ara.addEventListener('input', function(){ hid.value=''; render(); });
+      list.addEventListener('mousedown', function(e){ var it=e.target.closest('.combo-item'); if(!it) return; e.preventDefault();
+        hid.value=it.getAttribute('data-no'); ara.value=cariAdi(hid.value); list.classList.remove('open'); if(onSelect) onSelect(hid.value); });
+      document.addEventListener('click', function(e){ if(!list.parentNode.contains(e.target)) list.classList.remove('open'); });
+    }
+    function setComboValue(araId, hiddenId, cariNo){ $(hiddenId).value=cariNo||''; $(araId).value=cariNo?cariAdi(cariNo):''; }
+    setupCombo('c_CariAra','c_CariList','c_CariNo');
+    setupCombo('h_CariAra','h_CariList','h_CariNo', onHarCariChange);
+    function caseLastActivity(no){
+      var dates=HAR.filter(function(h){ return ''+h.DosyaNo===''+no; }).map(function(h){ return ''+h.Tarih; }).filter(Boolean).sort();
+      if(dates.length) return dates[dates.length-1];
+      var d=caseByNo(no); return d?d.AcilisTarihi:'';
     }
 
     /* ===================== ÖZET ===================== */
@@ -542,7 +584,7 @@
     function openHarModal(prefill){
       prefill=prefill||{};
       $('h_IslemID').value=''; $('h_Tarih').value=today(); $('h_Yon').value='Borç'; onHarYonChange();
-      $('h_CariNo').value=prefill.CariNo||''; onHarCariChange();
+      setComboValue('h_CariAra','h_CariNo', prefill.CariNo||''); onHarCariChange();
       $('h_DosyaNo').value=prefill.DosyaNo||''; $('h_Tutar').value=''; $('h_OdemeYontemi').value=META.odemeYontemi[0]||'';
       $('h_BelgeNo').value=''; $('h_Aciklama').value='';
       openModal('harModal');
@@ -565,19 +607,21 @@
     }
 
     /* ===================== DOSYALAR ===================== */
-    ['dosyaSearch','dosyaTurFilter','dosyaAsamaFilter'].forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',renderCases); el.addEventListener('change',renderCases); } });
+    ['dosyaSearch','dosyaTurFilter','dosyaAsamaFilter','dosyaAvukatFilter'].forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',renderCases); el.addEventListener('change',renderCases); } });
     function asamaClass(a){ if(a==='Kapandı') return 'kapali'; if(a==='Reddedildi') return 'red'; return ''; }
     function renderCases(){
-      var q=($('dosyaSearch').value||'').toLowerCase(), tf=$('dosyaTurFilter').value, af=$('dosyaAsamaFilter').value;
-      var rows=CASES.filter(function(d){ var hay=(d.DosyaNo+' '+cariAdi(d.CariNo)+' '+d.MuvekkilAd+' '+d.KarsiTaraf).toLowerCase();
-        return (!q||hay.indexOf(q)!==-1)&&(!tf||d.DavaTuru===tf)&&(!af||d.Asama===af); });
+      var q=($('dosyaSearch').value||'').toLowerCase(), tf=$('dosyaTurFilter').value, af=$('dosyaAsamaFilter').value, vf=$('dosyaAvukatFilter').value;
+      var rows=CASES.filter(function(d){ var hay=(d.DosyaNo+' '+cariAdi(d.CariNo)+' '+d.MuvekkilAd+' '+d.KarsiTaraf+' '+(d.Avukat||'')).toLowerCase();
+        return (!q||hay.indexOf(q)!==-1)&&(!tf||d.DavaTuru===tf)&&(!af||d.Asama===af)&&(!vf||d.Avukat===vf); });
       var tb=$('dosyaTable').querySelector('tbody'); $('dosyaEmpty').classList.toggle('hidden', rows.length>0);
       tb.innerHTML=rows.map(function(d){ var ag=caseAgg(d.DosyaNo), dn=esc(d.DosyaNo);
         return '<tr>'+
           '<td onclick="openCaseDetail(\''+dn+'\')" style="cursor:pointer"><b>'+dn+'</b></td>'+
           '<td onclick="openCaseDetail(\''+dn+'\')" style="cursor:pointer">'+esc(cariAdi(d.CariNo)||d.MuvekkilAd)+'</td>'+
+          '<td>'+esc(d.Avukat||'—')+'</td>'+
           '<td><span class="pill pill-tur">'+esc(d.DavaTuru||'—')+'</span></td>'+
           '<td><span class="pill pill-asama '+asamaClass(d.Asama)+'">'+esc(d.Asama||'—')+'</span></td>'+
+          '<td>'+esc(caseLastActivity(d.DosyaNo)||'—')+'</td>'+
           '<td class="num neg">'+fmtMoney(ag.borc)+'</td><td class="num pos">'+fmtMoney(ag.alacak)+'</td>'+
           '<td class="num">'+fmtMoney(ag.kalan)+'</td>'+
           '<td><button class="icon-btn" title="Detay" onclick="openCaseDetail(\''+dn+'\')">👁️</button>'+
@@ -589,7 +633,9 @@
       if(!CARILER.length){ toast('Önce “Cariler” sekmesinden bir cari (müvekkil) ekleyin','err'); return; }
       var d=dosyaNo?caseByNo(dosyaNo):null;
       $('caseModalTitle').textContent=d?('Dosya Düzenle — '+dosyaNo):'Yeni Dosya';
-      $('c_DosyaNo').value=d?d.DosyaNo:''; $('c_CariNo').value=d?d.CariNo:'';
+      $('c_DosyaNo').value=d?d.DosyaNo:'';
+      setComboValue('c_CariAra','c_CariNo', d?d.CariNo:'');
+      $('c_Avukat').value=d?(d.Avukat||''):'';
       $('c_AcilisTarihi').value=d&&d.AcilisTarihi?d.AcilisTarihi:today();
       $('c_DavaTuru').value=d?d.DavaTuru:(META.davaTurleri[0]||''); $('c_Asama').value=d?d.Asama:(META.asamalar[0]||'');
       $('c_KarsiTaraf').value=d?d.KarsiTaraf:''; $('c_TazminatTalebi').value=d?d.TazminatTalebi:''; $('c_AnlasilanUcret').value=d?d.AnlasilanUcret:'';
@@ -598,7 +644,7 @@
     }
     function saveCase(){
       var cariNo=$('c_CariNo').value; if(!cariNo){ toast('Müvekkil (cari) seçin','err'); return; }
-      var payload={ DosyaNo:$('c_DosyaNo').value, CariNo:cariNo, MuvekkilAd:cariAdi(cariNo), AcilisTarihi:$('c_AcilisTarihi').value,
+      var payload={ DosyaNo:$('c_DosyaNo').value, CariNo:cariNo, MuvekkilAd:cariAdi(cariNo), Avukat:$('c_Avukat').value, AcilisTarihi:$('c_AcilisTarihi').value,
         DavaTuru:$('c_DavaTuru').value, Asama:$('c_Asama').value, KarsiTaraf:$('c_KarsiTaraf').value,
         TazminatTalebi:$('c_TazminatTalebi').value, AnlasilanUcret:$('c_AnlasilanUcret').value, Aciklama:$('c_Aciklama').value };
       var isEdit=!!payload.DosyaNo; $('caseSaveBtn').disabled=true; showLoader(true);
@@ -615,8 +661,8 @@
     function openCaseDetail(dosyaNo){
       var d=caseByNo(dosyaNo); if(!d) return; var ag=caseAgg(dosyaNo); var cari=cariByNo(d.CariNo); var cariB=cariAgg(d.CariNo);
       $('caseDetailTitle').textContent=d.DosyaNo+' — '+cariAdi(d.CariNo);
-      var info=[['Müvekkil (Cari)',cariAdi(d.CariNo)],['Telefon',cari?cari.Telefon:''],['Dava Türü',d.DavaTuru],['Aşama',d.Asama],
-        ['Karşı Taraf',d.KarsiTaraf],['Açılış',d.AcilisTarihi],['Tazminat Talebi',fmtMoney(d.TazminatTalebi)],['Anlaşılan Ücret',fmtMoney(d.AnlasilanUcret)]]
+      var info=[['Müvekkil (Cari)',cariAdi(d.CariNo)],['Telefon',cari?cari.Telefon:''],['Avukat',d.Avukat],['Dava Türü',d.DavaTuru],['Aşama',d.Asama],
+        ['Karşı Taraf',d.KarsiTaraf],['Açılış',d.AcilisTarihi],['Son İşlem',caseLastActivity(dosyaNo)],['Tazminat Talebi',fmtMoney(d.TazminatTalebi)],['Anlaşılan Ücret',fmtMoney(d.AnlasilanUcret)]]
         .map(function(p){ return '<div class="di"><div class="k">'+esc(p[0])+'</div><div class="v">'+esc(p[1]||'—')+'</div></div>'; }).join('');
       var fin='<div class="fin-row">'+finBox('Dosya Tahakkuk',fmtMoney(ag.borc))+finBox('Dosya Tahsilat',fmtMoney(ag.alacak))+
         finBox('Dosya Kalan',fmtMoney(ag.kalan))+finBox('Cari Genel Bakiye',bakiyeLabel(cariB.bakiye))+'</div>';

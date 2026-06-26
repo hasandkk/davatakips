@@ -25,7 +25,7 @@ var SHEET_AYARLAR   = 'Ayarlar';
 
 var CARI_HEADERS = ['CariNo','Unvan','Tip','Telefon','Email','KimlikVergiNo','Adres','AcilisBakiye','Notlar','KayitTarihi'];
 var HAREKET_HEADERS = ['IslemID','Tarih','CariNo','DosyaNo','Yon','Kategori','Tutar','OdemeYontemi','BelgeNo','Aciklama','KayitTarihi'];
-var DOSYA_HEADERS = ['DosyaNo','AcilisTarihi','CariNo','MuvekkilAd','DavaTuru','KarsiTaraf','Asama','TazminatTalebi','AnlasilanUcret','Aciklama','SonGuncelleme'];
+var DOSYA_HEADERS = ['DosyaNo','AcilisTarihi','CariNo','MuvekkilAd','Avukat','DavaTuru','KarsiTaraf','Asama','TazminatTalebi','AnlasilanUcret','Aciklama','SonGuncelleme'];
 
 var DEFAULT_DAVA_TURLERI = ['Değer Kaybı','Hak Mahrumiyeti','Hasar Farkı','Kazanç Kaybı','DASK','Ayıplı Mal','Tüketici Hakem Heyeti','Diğer'];
 var DEFAULT_ASAMALAR = ['Yeni Başvuru','Evrak Toplama','Başvuru Yapıldı','Dava Açıldı','Bilirkişi','Karar Bekleniyor','Karar Çıktı','Tahsilat','Kapandı','Reddedildi'];
@@ -33,6 +33,7 @@ var DEFAULT_CARI_TIPLERI = ['Müvekkil','Karşı Taraf','Tedarikçi','Diğer'];
 var DEFAULT_BORC_KAT = ['Vekalet Ücreti','Masraf Yansıtma','Dava Harcı','Bilirkişi Ücreti','Danışmanlık','Diğer'];
 var DEFAULT_ALACAK_KAT = ['Tahsilat','Avans','İade','Diğer'];
 var DEFAULT_ODEME = ['Nakit','Havale/EFT','Kredi Kartı','Çek'];
+var DEFAULT_AVUKATLAR = ['Nida Gamsız','Sadık Sarıbıyık','Alperen Codey'];
 
 /* ============================ WEB APP ============================ */
 
@@ -83,7 +84,7 @@ function ensureAyarlar_(ss) {
   var cols = [
     ['DavaTurleri', DEFAULT_DAVA_TURLERI], ['Asamalar', DEFAULT_ASAMALAR],
     ['CariTipleri', DEFAULT_CARI_TIPLERI], ['BorcKategori', DEFAULT_BORC_KAT],
-    ['AlacakKategori', DEFAULT_ALACAK_KAT], ['OdemeYontemi', DEFAULT_ODEME]
+    ['AlacakKategori', DEFAULT_ALACAK_KAT], ['OdemeYontemi', DEFAULT_ODEME], ['Avukatlar', DEFAULT_AVUKATLAR]
   ];
   var maxLen = Math.max.apply(null, cols.map(function (c) { return c[1].length; }));
   var data = [cols.map(function (c) { return c[0]; })];
@@ -152,7 +153,8 @@ function getMeta() {
     cariTipleri: getColumnList_(ayar, 'CariTipleri'),
     borcKategori: getColumnList_(ayar, 'BorcKategori'),
     alacakKategori: getColumnList_(ayar, 'AlacakKategori'),
-    odemeYontemi: getColumnList_(ayar, 'OdemeYontemi')
+    odemeYontemi: getColumnList_(ayar, 'OdemeYontemi'),
+    avukatlar: getColumnList_(ayar, 'Avukatlar')
   };
 }
 
@@ -231,7 +233,7 @@ function addCase(data) {
     var sh = getSheet_(SHEET_DOSYALAR);
     var dosyaNo = (data.DosyaNo && ('' + data.DosyaNo).trim()) || generateDosyaNo_(sh);
     sh.appendRow([dosyaNo, data.AcilisTarihi || formatDate_(new Date()), data.CariNo || '', data.MuvekkilAd || '',
-      data.DavaTuru || '', data.KarsiTaraf || '', data.Asama || 'Yeni Başvuru',
+      data.Avukat || '', data.DavaTuru || '', data.KarsiTaraf || '', data.Asama || 'Yeni Başvuru',
       toNumber_(data.TazminatTalebi), toNumber_(data.AnlasilanUcret), data.Aciklama || '', nowStamp_()]);
     return { ok: true, dosyaNo: dosyaNo };
   } finally { lock.releaseLock(); }
@@ -243,7 +245,7 @@ function updateCase(data) {
     var sh = getSheet_(SHEET_DOSYALAR), rowIdx = findRowByValue_(sh, 'DosyaNo', data.DosyaNo);
     if (rowIdx === -1) return { ok: false, error: 'Dosya bulunamadı.' };
     var headers = DOSYA_HEADERS, cur = sh.getRange(rowIdx, 1, 1, headers.length).getValues()[0];
-    var map = { AcilisTarihi: data.AcilisTarihi, CariNo: data.CariNo, MuvekkilAd: data.MuvekkilAd, DavaTuru: data.DavaTuru,
+    var map = { AcilisTarihi: data.AcilisTarihi, CariNo: data.CariNo, MuvekkilAd: data.MuvekkilAd, Avukat: data.Avukat, DavaTuru: data.DavaTuru,
       KarsiTaraf: data.KarsiTaraf, Asama: data.Asama, TazminatTalebi: toNumber_(data.TazminatTalebi),
       AnlasilanUcret: toNumber_(data.AnlasilanUcret), Aciklama: data.Aciklama, SonGuncelleme: nowStamp_() };
     for (var c = 0; c < headers.length; c++) if (map.hasOwnProperty(headers[c]) && map[headers[c]] !== undefined) cur[c] = map[headers[c]];
@@ -299,10 +301,10 @@ function seedSampleData() {
   var cariNos = cariler.map(function (c) { return addCari(c).cariNo; });
 
   var davalar = [
-    { CariNo: cariNos[0], MuvekkilAd: 'Ahmet Yılmaz', DavaTuru: 'Değer Kaybı', KarsiTaraf: 'Anadolu Sigorta', Asama: 'Dava Açıldı', TazminatTalebi: 45000, AnlasilanUcret: 9000, AcilisTarihi: '2026-01-15', Aciklama: '34 ABC 123 plakalı araç.' },
-    { CariNo: cariNos[1], MuvekkilAd: 'Ayşe Demir', DavaTuru: 'Hasar Farkı', KarsiTaraf: 'Axa Sigorta', Asama: 'Bilirkişi', TazminatTalebi: 28000, AnlasilanUcret: 5600, AcilisTarihi: '2026-02-03', Aciklama: 'Eksik hasar bedeli farkı.' },
-    { CariNo: cariNos[2], MuvekkilAd: 'Mehmet Kaya', DavaTuru: 'Kazanç Kaybı', KarsiTaraf: 'Allianz', Asama: 'Karar Bekleniyor', TazminatTalebi: 60000, AnlasilanUcret: 12000, AcilisTarihi: '2026-01-28', Aciklama: 'Ticari taksi 45 gün çalışamama.' },
-    { CariNo: cariNos[3], MuvekkilAd: 'Fatma Şahin', DavaTuru: 'DASK', KarsiTaraf: 'DASK', Asama: 'Tahsilat', TazminatTalebi: 80000, AnlasilanUcret: 12000, AcilisTarihi: '2025-12-10', Aciklama: 'Deprem hasarı eksik ödeme.' }
+    { CariNo: cariNos[0], MuvekkilAd: 'Ahmet Yılmaz', Avukat: 'Nida Gamsız', DavaTuru: 'Değer Kaybı', KarsiTaraf: 'Anadolu Sigorta', Asama: 'Dava Açıldı', TazminatTalebi: 45000, AnlasilanUcret: 9000, AcilisTarihi: '2026-01-15', Aciklama: '34 ABC 123 plakalı araç.' },
+    { CariNo: cariNos[1], MuvekkilAd: 'Ayşe Demir', Avukat: 'Sadık Sarıbıyık', DavaTuru: 'Hasar Farkı', KarsiTaraf: 'Axa Sigorta', Asama: 'Bilirkişi', TazminatTalebi: 28000, AnlasilanUcret: 5600, AcilisTarihi: '2026-02-03', Aciklama: 'Eksik hasar bedeli farkı.' },
+    { CariNo: cariNos[2], MuvekkilAd: 'Mehmet Kaya', Avukat: 'Alperen Codey', DavaTuru: 'Kazanç Kaybı', KarsiTaraf: 'Allianz', Asama: 'Karar Bekleniyor', TazminatTalebi: 60000, AnlasilanUcret: 12000, AcilisTarihi: '2026-01-28', Aciklama: 'Ticari taksi 45 gün çalışamama.' },
+    { CariNo: cariNos[3], MuvekkilAd: 'Fatma Şahin', Avukat: 'Nida Gamsız', DavaTuru: 'DASK', KarsiTaraf: 'DASK', Asama: 'Tahsilat', TazminatTalebi: 80000, AnlasilanUcret: 12000, AcilisTarihi: '2025-12-10', Aciklama: 'Deprem hasarı eksik ödeme.' }
   ];
   var dosyaNos = davalar.map(function (d) { return addCase(d).dosyaNo; });
 
