@@ -278,6 +278,26 @@ function addHareket(data) {
   } finally { lock.releaseLock(); }
 }
 
+function updateHareket(data) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = getSheet_(SHEET_HAREKETLER), values = sh.getDataRange().getValues();
+    var headers = values[0], idCol = headers.indexOf('IslemID');
+    for (var r = 1; r < values.length; r++) {
+      if ('' + values[r][idCol] === '' + data.IslemID) {
+        var cur = sh.getRange(r + 1, 1, 1, headers.length).getValues()[0];
+        var yon = (('' + data.Yon).toLowerCase().indexOf('alacak') !== -1) ? 'Alacak' : 'Borç';
+        var map = { Tarih: data.Tarih, CariNo: data.CariNo, DosyaNo: data.DosyaNo, Yon: yon, Kategori: data.Kategori,
+          Tutar: toNumber_(data.Tutar), OdemeYontemi: data.OdemeYontemi, BelgeNo: data.BelgeNo, Aciklama: data.Aciklama };
+        for (var c = 0; c < headers.length; c++) if (map.hasOwnProperty(headers[c]) && map[headers[c]] !== undefined) cur[c] = map[headers[c]];
+        sh.getRange(r + 1, 1, 1, headers.length).setValues([cur]);
+        return { ok: true };
+      }
+    }
+    return { ok: false, error: 'Hareket bulunamadı.' };
+  } finally { lock.releaseLock(); }
+}
+
 function deleteHareket(islemId) {
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
