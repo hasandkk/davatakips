@@ -44,12 +44,20 @@ Kök dizindeki **`teminat-verilerim.html`** dosyasını indirip tarayıcıda aç
 499 cari ve tüm hareketler/ekstreler önceden yüklü gelir.
 
 ## Gerçek sisteme (Google E-Tablo) aktarma
-1. Uygulamayı Apps Script olarak kurun (kök `README.md`). İlk açılışta
-   `Cariler`, `Hareketler`, `Dosyalar`, `Ayarlar` sayfaları oluşur.
-2. Google E-Tablo'da **Cariler** sayfasını açın → **Dosya → İçe aktar →
-   Yükle** → `Cariler.csv` → İçe aktarma konumu: **Geçerli sayfaya ekle** →
-   İçe aktar. Sonra eklenen tek fazladan başlık satırını silin.
-3. Aynısını **Hareketler** sayfasında `Hareketler.csv` ile yapın.
-4. Uygulamayı yenileyin; tüm cariler, bakiyeler ve ekstreler görünür.
+1. Uygulamayı açın, üst bardaki **📊 E-Tablo** ile veritabanı e-tablosunu açın
+   (`Cariler`, `Dosyalar`, `Hareketler`, `Ayarlar` sayfaları vardır).
+2. Alttan **Cariler** sekmesine geçin → **Dosya → İçe aktar → Yükle** →
+   `Cariler.csv` seçin.
+3. İçe aktarma ayarları:
+   - İçe aktarma konumu: **Geçerli sayfayı değiştir**
+   - Ayırıcı türü: **Algıla** (veya Virgül)
+   - **“Metni sayılara, tarihlere ve formüllere dönüştür” seçeneğinin işaretini KALDIRIN**
+     (sayı/tarih biçimleri bozulmasın diye) → **Verileri içe aktar**.
+4. Aynısını **Dosyalar** sekmesinde `Dosyalar.csv`, **Hareketler** sekmesinde
+   `Hareketler.csv` ile yapın (her seferinde doğru sekmede olun).
+5. Web uygulamasını yenileyin; 499 cari, 620 dava, tüm hareketler/ekstreler gelir.
 
-> Not: CSV'ler UTF-8 (BOM) kodlamasındadır; Türkçe karakterler doğru gelir.
+> Notlar:
+> - CSV'ler UTF-8 (BOM); Türkçe karakterler doğru gelir.
+> - Tutarlar Türk biçiminde (örn. `400,00`) yazıldı; uygulama bunları doğru okur.
+> - `Ayarlar` sayfasına dokunmayın (dava türleri/avukatlar orada).
