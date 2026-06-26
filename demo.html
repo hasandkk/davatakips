@@ -425,6 +425,7 @@
       <label class="full">Açıklama<textarea id="h_Aciklama" rows="2"></textarea></label>
     </div>
     <div class="modal-foot"><button class="ghost-btn" onclick="closeModal('harModal')">İptal</button>
+      <button class="ghost-btn" id="harSaveNewBtn" onclick="saveHar(true)" title="Kaydet ve aynı cariye yeni hareket gir">Kaydet ve Yeni ➕</button>
       <button class="primary-btn" id="harSaveBtn" onclick="saveHar()">Kaydet</button></div>
   </div></div>
 
@@ -789,7 +790,7 @@
       $('ekstreBody').innerHTML='<div class="detail-grid" style="margin-bottom:16px">'+info+'</div>'+fin+ledger+davaHtml;
       $('ekstreEditBtn').onclick=function(){ closeModal('ekstreModal'); openCariModal(cariNo); };
       $('ekstrePrintBtn').onclick=function(){ printEkstre(cariNo); };
-      $('ekstreHarBtn').onclick=function(){ closeModal('ekstreModal'); openHarModal({ CariNo:cariNo }); };
+      $('ekstreHarBtn').onclick=function(){ openHarModal({ CariNo:cariNo }); };
       openModal('ekstreModal');
     }
     function finBox(k,v){ return '<div class="fin-box"><div class="k">'+esc(k)+'</div><div class="v">'+v+'</div></div>'; }
@@ -911,16 +912,16 @@
       if($('ekstreModal').classList.contains('open')) renderLedgerPanel('ekstre');
       if($('caseDetailModal').classList.contains('open')) renderLedgerPanel('caseLedger');
     }
-    function saveHar(){
+    function saveHar(keepOpen){
       var cariNo=$('h_CariNo').value; if(!cariNo){ toast('Cari seçin','err'); return; }
       var tutar=num($('h_Tutar').value); if(!tutar||tutar<=0){ toast('Geçerli tutar girin','err'); return; }
       var id=$('h_IslemID').value;
       var yon=(''+$('h_Yon').value).toLowerCase().indexOf('alacak')!==-1?'Alacak':'Borç';
       var payload={ IslemID:id, Tarih:$('h_Tarih').value, CariNo:cariNo, DosyaNo:$('h_DosyaNo').value, Yon:yon,
         Kategori:$('h_Kategori').value, Tutar:$('h_Tutar').value, OdemeYontemi:$('h_OdemeYontemi').value, BelgeNo:$('h_BelgeNo').value, Aciklama:$('h_Aciklama').value };
-      $('harSaveBtn').disabled=true; showLoader(true);
+      $('harSaveBtn').disabled=true; $('harSaveNewBtn').disabled=true; showLoader(true);
       var tut=num(payload.Tutar), isB=(yon==='Borç'), dosya=payload.DosyaNo||'';
-      var r=server(function(res){ $('harSaveBtn').disabled=false; showLoader(false);
+      var r=server(function(res){ $('harSaveBtn').disabled=false; $('harSaveNewBtn').disabled=false; showLoader(false);
         if(res&&res.ok){
           if(id){ var old=findHar(id);
             if(old){ applyHarDelta(old.CariNo, old.DosyaNo, isBorc(old), num(old.Tutar), -1);
@@ -937,9 +938,14 @@
             if(ALL_HAR){ ALL_HAR.push(newH); HAR_COUNT=ALL_HAR.length; } else HAR_COUNT=(HAR_COUNT||0)+1;
             SON_HAR.unshift(newH); if(SON_HAR.length>8) SON_HAR.pop();
           }
-          closeModal('harModal'); toast(id?'Hareket güncellendi':'Hareket eklendi','ok'); afterLocalChange(); refreshLedgersIfOpen();
+          toast(id?'Hareket güncellendi':'Hareket eklendi','ok'); afterLocalChange(); refreshLedgersIfOpen();
+          if(keepOpen){ // aynı cariye yeni hareket: formu sıfırla, modal açık kalsın
+            $('h_IslemID').value=''; $('h_Tutar').value=''; $('h_BelgeNo').value=''; $('h_Aciklama').value='';
+            var t2=document.querySelector('#harModal .modal-head h3'); if(t2) t2.textContent='Yeni Cari Hareketi';
+            $('h_Tutar').focus();
+          } else { closeModal('harModal'); }
         } else toast((res&&res.error)||'Hata','err'); },
-        function(){ $('harSaveBtn').disabled=false; showLoader(false); });
+        function(){ $('harSaveBtn').disabled=false; $('harSaveNewBtn').disabled=false; showLoader(false); });
       if(r) r[id?'updateHareket':'addHareket'](payload); else { $('harSaveBtn').disabled=false; showLoader(false); }
     }
     function removeHar(id){
@@ -1030,7 +1036,7 @@
       $('caseDetailBody').innerHTML=fin+'<div class="detail-grid">'+info+'</div>'+(d.Aciklama?'<p style="margin-top:12px"><b>Açıklama:</b> '+esc(d.Aciklama)+'</p>':'')+harHtml;
       $('caseDetailEditBtn').onclick=function(){ closeModal('caseDetailModal'); openCaseModal(dosyaNo); };
       $('caseDetailCariBtn').onclick=function(){ closeModal('caseDetailModal'); openEkstre(d.CariNo); };
-      $('caseDetailHarBtn').onclick=function(){ closeModal('caseDetailModal'); openHarModal({ CariNo:d.CariNo, DosyaNo:dosyaNo }); };
+      $('caseDetailHarBtn').onclick=function(){ openHarModal({ CariNo:d.CariNo, DosyaNo:dosyaNo }); };
       openModal('caseDetailModal');
     }
 
