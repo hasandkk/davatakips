@@ -277,21 +277,50 @@
     <!-- MUHASEBE -->
     <section id="tab-muhasebe" class="tab-panel">
       <div class="cards" id="muhasebeCards"></div>
-      <div class="panel"><h3>Kişi Bazında Cari Özeti</h3>
+
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h3 style="margin:0">Kişi Bazında Cari Özeti</h3>
+          <button class="primary-btn" onclick="openHarModal()">+ Yeni Hareket</button>
+        </div>
+        <div class="toolbar" style="margin-top:14px">
+          <input type="search" id="ozetSearch" placeholder="🔍 Cari adı / no ara...">
+          <select id="ozetDurum">
+            <option value="borclu">Borçlular (bize borçlu)</option>
+            <option value="alacakli">Alacaklılar (biz borçlu)</option>
+            <option value="acik">Bakiyesi olanlar</option>
+            <option value="hepsi">Hepsi</option>
+            <option value="kapali">Kapalı (bakiye 0)</option>
+          </select>
+          <select id="ozetSort">
+            <option value="bakiye_desc">Bakiye (yüksek → düşük)</option>
+            <option value="bakiye_asc">Bakiye (düşük → yüksek)</option>
+            <option value="ad">İsim (A → Z)</option>
+          </select>
+        </div>
+        <div id="ozetSayac" class="hint" style="margin:0 0 8px"></div>
         <div class="table-wrap"><table id="cariOzetTable">
           <thead><tr><th>Cari</th><th>Tip</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th><th>Ekstre</th></tr></thead>
           <tbody></tbody></table></div>
+        <div id="ozetEmpty" class="empty hidden">Eşleşen cari yok.</div>
       </div>
-      <div class="toolbar">
-        <input type="search" id="harSearch" placeholder="🔍 Açıklama, kategori, belge ara...">
-        <select id="harCariFilter"><option value="">Tüm Cariler</option></select>
-        <select id="harYonFilter"><option value="">Tüm Hareketler</option><option value="Borç">Borç</option><option value="Alacak">Alacak</option></select>
-        <button class="primary-btn" onclick="openHarModal()">+ Yeni Hareket</button>
+
+      <div class="panel">
+        <h3>Hareketler</h3>
+        <div class="toolbar">
+          <input type="search" id="harSearch" placeholder="🔍 Cari, açıklama, belge, dosya, tutar ara...">
+          <select id="harCariFilter"><option value="">Tüm Cariler</option></select>
+          <select id="harYonFilter"><option value="">Borç + Alacak</option><option value="Borç">Sadece Borç</option><option value="Alacak">Sadece Alacak</option></select>
+          <input type="date" id="harBas" title="Başlangıç tarihi" style="flex:1 1 130px">
+          <input type="date" id="harBit" title="Bitiş tarihi" style="flex:1 1 130px">
+          <button class="ghost-btn" onclick="harFiltreTemizle()">Temizle</button>
+        </div>
+        <div id="harSayac" class="hint" style="margin:0 0 8px"></div>
+        <div class="table-wrap"><table id="harTable">
+          <thead><tr><th>Tarih</th><th>Cari</th><th>Dava</th><th>Yön</th><th>Kategori</th><th>Belge</th><th>Açıklama</th><th class="num">Tutar</th><th></th></tr></thead>
+          <tbody></tbody></table></div>
+        <div id="harEmpty" class="empty hidden">Eşleşen hareket yok.</div>
       </div>
-      <div class="table-wrap"><table id="harTable">
-        <thead><tr><th>Tarih</th><th>Cari</th><th>Dava</th><th>Yön</th><th>Kategori</th><th>Belge</th><th>Açıklama</th><th class="num">Tutar</th><th></th></tr></thead>
-        <tbody></tbody></table></div>
-      <div id="harEmpty" class="empty hidden">Henüz hareket yok. “+ Yeni Hareket” ile ekleyin.</div>
     </section>
 
     <!-- RAPOR -->
@@ -717,35 +746,69 @@
     }
 
     /* ===================== HAREKETLER ===================== */
-    ['harSearch','harCariFilter','harYonFilter'].forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',renderHar); el.addEventListener('change',renderHar); } });
+    ['ozetSearch','ozetDurum','ozetSort'].forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',renderOzet); el.addEventListener('change',renderOzet); } });
+    ['harSearch','harCariFilter','harYonFilter','harBas','harBit'].forEach(function(id){ var el=$(id); if(el){ el.addEventListener('input',renderHarList); el.addEventListener('change',renderHarList); } });
+    function harFiltreTemizle(){ ['harSearch','harCariFilter','harYonFilter','harBas','harBit'].forEach(function(id){ var el=$(id); if(el) el.value=''; }); renderHarList(); }
     function onHarYonChange(){ var borc=$('h_Yon').value==='Borç'; fillSelect($('h_Kategori'), borc?META.borcKategori:META.alacakKategori); }
     function onHarCariChange(){
       var cariNo=$('h_CariNo').value;
       var davalar=CASES.filter(function(d){ return ''+d.CariNo===''+cariNo; });
       $('h_DosyaNo').innerHTML='<option value="">— Yok —</option>'+davalar.map(function(d){ return '<option value="'+esc(d.DosyaNo)+'">'+esc(d.DosyaNo)+' · '+esc(d.DavaTuru)+'</option>'; }).join('');
     }
-    function renderHar(){
-      // muhasebe kartları
+    function renderHar(){ renderMuhasebeCards(); renderOzet(); renderHarList(); }
+    function renderMuhasebeCards(){
       var tahsilat=0, borc=0; HAR.forEach(function(h){ if(isBorc(h)) borc+=num(h.Tutar); else tahsilat+=num(h.Tutar); });
-      var netAlacak=0; CARILER.forEach(function(c){ var b=cariAgg(c.CariNo).bakiye; if(b>0) netAlacak+=b; });
+      var netAlacak=0, borcluSayi=0; CARILER.forEach(function(c){ var b=cariAgg(c.CariNo).bakiye; if(b>0){ netAlacak+=b; borcluSayi++; } });
       $('muhasebeCards').innerHTML=[card('Toplam Tahsilat (Alacak)',fmtMoney(tahsilat),'green'),
         card('Toplam Borçlandırma',fmtMoney(borc),'red'), card('Net Alacağımız',fmtMoney(netAlacak),'blue'),
-        card('Toplam Hareket',HAR.length,'amber')].join('');
-      // kişi bazında özet
-      var ot=$('cariOzetTable').querySelector('tbody');
-      ot.innerHTML=CARILER.map(function(c){ var a=cariAgg(c.CariNo), cn=esc(c.CariNo);
-        return '<tr><td style="cursor:pointer" onclick="openEkstre(\''+cn+'\')"><b>'+esc(c.Unvan)+'</b></td>'+
+        card('Borçlu Cari',borcluSayi,'amber'), card('Toplam Hareket',HAR.length,'amber')].join('');
+    }
+    function renderOzet(){
+      var q=($('ozetSearch').value||'').toLowerCase(), durum=$('ozetDurum').value, sort=$('ozetSort').value;
+      var list=CARILER.map(function(c){ var a=cariAgg(c.CariNo); return { c:c, a:a }; }).filter(function(x){
+        var b=x.a.bakiye, hay=(x.c.Unvan+' '+x.c.CariNo).toLowerCase();
+        if(q && hay.indexOf(q)===-1) return false;
+        if(durum==='borclu') return b>0.005;
+        if(durum==='alacakli') return b<-0.005;
+        if(durum==='acik') return Math.abs(b)>0.005;
+        if(durum==='kapali') return Math.abs(b)<=0.005;
+        return true;
+      });
+      list.sort(function(p,r){
+        if(sort==='ad') return (''+p.c.Unvan).localeCompare(''+r.c.Unvan,'tr');
+        if(sort==='bakiye_asc') return p.a.bakiye-r.a.bakiye;
+        return r.a.bakiye-p.a.bakiye;
+      });
+      $('ozetSayac').textContent=list.length+' cari listeleniyor';
+      $('ozetEmpty').classList.toggle('hidden', list.length>0);
+      $('cariOzetTable').querySelector('tbody').innerHTML=list.map(function(x){ var c=x.c, a=x.a, cn=esc(c.CariNo);
+        return '<tr><td style="cursor:pointer" onclick="openEkstre(\''+cn+'\')"><b>'+esc(c.Unvan)+'</b><div class="hint">'+cn+'</div></td>'+
           '<td><span class="pill pill-tip">'+esc(c.Tip||'—')+'</span></td>'+
           '<td class="num neg">'+fmtMoney(a.acilis+a.borc)+'</td><td class="num pos">'+fmtMoney(a.alacak)+'</td>'+
           '<td class="num">'+bakiyeLabel(a.bakiye)+'</td>'+
           '<td><button class="ghost-btn" onclick="printEkstre(\''+cn+'\')">📄 İndir</button></td></tr>';
-      }).join('')||'<tr><td colspan="6" class="empty">Cari yok</td></tr>';
-      // hareket listesi
+      }).join('');
+    }
+    var HAR_LIMIT=300;
+    function renderHarList(){
       var q=($('harSearch').value||'').toLowerCase(), cf=$('harCariFilter').value, yf=$('harYonFilter').value;
-      var rows=HAR.filter(function(h){ var hay=(cariAdi(h.CariNo)+' '+h.Kategori+' '+h.Aciklama+' '+h.BelgeNo+' '+dosyaEtiket(h.DosyaNo)).toLowerCase();
-        return (!q||hay.indexOf(q)!==-1)&&(!cf||''+h.CariNo===''+cf)&&(!yf||(isBorc(h)?'Borç':'Alacak')===yf); }).slice().reverse();
-      var tb=$('harTable').querySelector('tbody'); $('harEmpty').classList.toggle('hidden', rows.length>0);
-      tb.innerHTML=rows.map(function(h){
+      var bas=$('harBas').value, bit=$('harBit').value;
+      var filtreVar=!!(q||cf||yf||bas||bit);
+      var rows=HAR.filter(function(h){ var hay=(cariAdi(h.CariNo)+' '+h.Kategori+' '+h.Aciklama+' '+h.BelgeNo+' '+dosyaEtiket(h.DosyaNo)+' '+h.Tutar).toLowerCase();
+        if(q && hay.indexOf(q)===-1) return false;
+        if(cf && ''+h.CariNo!==''+cf) return false;
+        if(yf && (isBorc(h)?'Borç':'Alacak')!==yf) return false;
+        if(bas && (''+h.Tarih)<bas) return false;
+        if(bit && (''+h.Tarih)>bit) return false;
+        return true;
+      }).slice().reverse();
+      var toplam=rows.length, kesildi=false;
+      if(!filtreVar && rows.length>HAR_LIMIT){ rows=rows.slice(0,HAR_LIMIT); kesildi=true; }
+      $('harSayac').innerHTML = kesildi
+        ? 'En son '+HAR_LIMIT+' hareket gösteriliyor (toplam '+toplam+'). Tümünü görmek için arama/filtre veya tarih aralığı kullanın.'
+        : toplam+' hareket'+(filtreVar?' (filtreli)':'');
+      $('harEmpty').classList.toggle('hidden', toplam>0);
+      $('harTable').querySelector('tbody').innerHTML=rows.map(function(h){
         return '<tr><td>'+esc(h.Tarih)+'</td><td>'+esc(cariAdi(h.CariNo))+'</td><td>'+esc(dosyaEtiket(h.DosyaNo))+'</td>'+
           '<td><span class="pill '+(isBorc(h)?'pill-borc':'pill-alacak')+'">'+esc(h.Yon)+'</span></td>'+
           '<td>'+esc(h.Kategori)+'</td><td>'+esc(h.BelgeNo||'')+'</td><td>'+esc(h.Aciklama||'')+'</td>'+
