@@ -5,9 +5,24 @@ dönüştürülmüş halidir.
 
 | Dosya | İçerik |
 |-------|--------|
-| `veri.json` | 499 cari + 4.106 hareket (uygulamanın iç formatı) |
+| `veri.json` | 499 cari + 620 dava + 4.106 hareket (uygulamanın iç formatı) |
 | `Cariler.csv` | Cariler sayfası için (10 sütun: CariNo, Unvan, …) |
-| `Hareketler.csv` | Hareketler sayfası için (11 sütun: IslemID, Tarih, …) |
+| `Dosyalar.csv` | Dosyalar sayfası için (12 sütun: DosyaNo, …, Avukat, …) |
+| `Hareketler.csv` | Hareketler sayfası için (11 sütun; DosyaNo'lar dolduruldu) |
+
+## Otomatik açılan davalar
+
+Hareket açıklamalarındaki dava türü ipuçlarından (DK/değer kaybı, HM/hak
+mahrumiyeti, HF/hasar farkı, DASK, ayıplı, tüketici) ve dava/plaka/dosya-no
+içeren kayıtlardan **620 dava otomatik açıldı** ve ilgili 1.210 hareket
+davalara bağlandı:
+
+- Değer Kaybı 215, Hak Mahrumiyeti 119, Diğer 205, DASK 37, Hasar Farkı 31,
+  Tüketici 7, Ayıplı 6.
+- **Bakiyesi sıfır olan cariler** (kapanmış işler) davaları **“Kapandı”**
+  aşamasında açıldı (183 dava); diğerleri **“Başvuru Yapıldı”** (437 dava).
+- Avukat alanı boş bırakıldı (kendi avukatlarınızı sonradan atayabilirsiniz);
+  karşı taraf yalnızca DASK davalarında “DASK” olarak dolduruldu.
 
 ## Veri eşlemesi (önemli)
 
