@@ -52,6 +52,10 @@
     td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     #dosyaTable td, #cariTable td, #cariOzetTable td { white-space:nowrap; }
     #dosyaTable td.wrapcell { white-space:normal; }
+    /* işlem (ikon) sütununu sağa sabitle: yatay kaydırmada bile görünür kalsın */
+    #cariTable td:last-child, #dosyaTable td:last-child { position:sticky; right:0; background:#fff; box-shadow:-8px 0 8px -8px rgba(0,0,0,.18); }
+    #cariTable th:last-child, #dosyaTable th:last-child { position:sticky; right:0; background:#f9fafb; box-shadow:-8px 0 8px -8px rgba(0,0,0,.18); }
+    #cariTable tbody tr:hover td:last-child { background:#f9fafb; }
     .pos { color:var(--green); font-weight:600; } .neg { color:var(--red); font-weight:600; } .mut { color:var(--muted); }
     .pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; white-space:nowrap; }
     .pill-tur{background:#ecfeff;color:#0e7490;} .pill-asama{background:#eef2ff;color:#4338ca;}
@@ -112,7 +116,7 @@
   <!-- ===== DEMO BACKEND — Apps Script GEREKMEZ (localStorage) ===== -->
   <script>
   (function(){
-    var KEY='teminat_veri_v3';
+    var KEY='teminat_veri_v4';
     function defaults(){ return {
       davaTurleri:['Değer Kaybı','Hak Mahrumiyeti','Hasar Farkı','Kazanç Kaybı','DASK','Ayıplı Mal','Tüketici Hakem Heyeti','Diğer'],
       asamalar:['Yeni Başvuru','Evrak Toplama','Başvuru Yapıldı','Dava Açıldı','Bilirkişi','Karar Bekleniyor','Karar Çıktı','Tahsilat','Kapandı','Reddedildi'],
@@ -591,9 +595,8 @@
           '<td class="num neg">'+fmtMoney(a.acilis+a.borc)+'</td>'+
           '<td class="num pos">'+fmtMoney(a.alacak)+'</td>'+
           '<td class="num">'+bakiyeLabel(a.bakiye)+'</td>'+
-          '<td><button class="icon-btn" title="Ekstre" onclick="openEkstre(\''+cn+'\')">📄</button>'+
-          '<button class="icon-btn" title="Düzenle" onclick="openCariModal(\''+cn+'\')">✏️</button>'+
-          '<button class="icon-btn" title="Sil" onclick="removeCari(\''+cn+'\')">🗑️</button></td></tr>';
+          '<td style="text-align:right"><button class="icon-btn" title="Düzenle" onclick="event.stopPropagation();openCariModal(\''+cn+'\')">✏️</button>'+
+          '<button class="icon-btn" title="Sil" onclick="event.stopPropagation();removeCari(\''+cn+'\')">🗑️</button></td></tr>';
       }).join('');
     }
     function openCariModal(cariNo){
@@ -632,17 +635,40 @@
     }
     // Cari hesap hareketlerini ekstre formatında (Borç/Alacak sütun + yürüyen bakiye) üretir.
     // İsteğe bağlı vurguDosya: o davaya ait satırları işaretler.
-    function ledgerTableHtml(cariNo, silButon, vurguDosya){
+    function ledgerTableHtml(cariNo, silButon, vurguDosya, opts){
+      opts=opts||{};
       var agg=cariAgg(cariNo), L=buildLedger(cariNo);
-      var h='<div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Açıklama</th><th>Dava</th><th>Belge</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th>'+(silButon?'<th></th>':'')+'</tr></thead><tbody>';
-      h+='<tr><td class="mut">—</td><td class="mut">Açılış Bakiyesi</td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num">'+fmtMoney(agg.acilis)+'</td>'+(silButon?'<td></td>':'')+'</tr>';
-      h+=L.rows.map(function(x){ var hh=x.h; var vurgu=(vurguDosya&&''+hh.DosyaNo===''+vurguDosya)?' style="background:#f0fdfa"':'';
+      var q=(opts.q||'').toLowerCase().trim(), desc=!!opts.sortDesc, cols=silButon?8:7;
+      var rows=L.rows;
+      if(q){ rows=rows.filter(function(x){ var hh=x.h;
+        return (hh.Tarih+' '+(hh.Kategori||'')+' '+(hh.Aciklama||'')+' '+(hh.BelgeNo||'')+' '+dosyaEtiket(hh.DosyaNo)+' '+x.borc+' '+x.alacak).toLowerCase().indexOf(q)!==-1; }); }
+      if(desc) rows=rows.slice().reverse();
+      var opening='<tr><td class="mut">—</td><td class="mut">Açılış Bakiyesi</td><td></td><td></td><td class="num"></td><td class="num"></td><td class="num">'+fmtMoney(agg.acilis)+'</td>'+(silButon?'<td></td>':'')+'</tr>';
+      var body=rows.map(function(x){ var hh=x.h; var vurgu=(vurguDosya&&''+hh.DosyaNo===''+vurguDosya)?' style="background:#f0fdfa"':'';
         return '<tr'+vurgu+'><td>'+esc(hh.Tarih)+'</td><td>'+esc(hh.Kategori)+(hh.Aciklama?' · '+esc(hh.Aciklama):'')+'</td><td>'+esc(dosyaEtiket(hh.DosyaNo))+'</td>'+
           '<td>'+esc(hh.BelgeNo||'')+'</td><td class="num neg">'+(x.borc?fmtMoney(x.borc):'')+'</td><td class="num pos">'+(x.alacak?fmtMoney(x.alacak):'')+'</td>'+
           '<td class="num">'+fmtMoney(x.bakiye)+'</td>'+(silButon?'<td><button class="icon-btn" title="Sil" onclick="removeHar(\''+esc(hh.IslemID)+'\')">🗑️</button></td>':'')+'</tr>';
-      }).join('')||'<tr><td colspan="'+(silButon?8:7)+'" class="empty">Hareket yok</td></tr>';
-      h+='</tbody></table></div>';
-      return h;
+      }).join('');
+      var inner;
+      if(!rows.length) inner='<tr><td colspan="'+cols+'" class="empty">'+(q?'Eşleşen hareket yok':'Hareket yok')+'</td></tr>';
+      else if(q) inner=body;            // arama varken açılış satırı gizlenir
+      else inner = desc ? body+opening : opening+body;
+      return '<div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Açıklama</th><th>Dava</th><th>Belge</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th>'+(silButon?'<th></th>':'')+'</tr></thead><tbody>'+inner+'</tbody></table></div>';
+    }
+    // Aramalı + tarih sıralamalı cari hesap paneli (ekstre ve dava detayında kullanılır)
+    var LEDGER_STATE={};
+    function ledgerPanelHtml(panelId, cariNo, silButon, vurguDosya){
+      LEDGER_STATE[panelId]={cariNo:cariNo, silButon:silButon, vurguDosya:vurguDosya||''};
+      return '<div class="toolbar" style="margin:0 0 10px">'+
+        '<input type="search" id="'+panelId+'_q" oninput="renderLedgerPanel(\''+panelId+'\')" placeholder="🔍 Cari hesapta ara (açıklama, belge, dava, tutar...)">'+
+        '<select id="'+panelId+'_sort" onchange="renderLedgerPanel(\''+panelId+'\')" style="flex:0 0 auto"><option value="asc">Tarih (eski → yeni)</option><option value="desc">Tarih (yeni → eski)</option></select>'+
+        '</div><div id="'+panelId+'_body">'+ledgerTableHtml(cariNo, silButon, vurguDosya, {})+'</div>';
+    }
+    function renderLedgerPanel(panelId){
+      var st=LEDGER_STATE[panelId]; if(!st) return;
+      var bodyEl=$(panelId+'_body'); if(!bodyEl) return;
+      var qel=$(panelId+'_q'), sel=$(panelId+'_sort');
+      bodyEl.innerHTML=ledgerTableHtml(st.cariNo, st.silButon, st.vurguDosya, { q:qel?qel.value:'', sortDesc: !!(sel&&sel.value==='desc') });
     }
     function openEkstre(cariNo){
       var c=cariByNo(cariNo); if(!c) return;
@@ -652,7 +678,7 @@
         .map(function(p){ return '<div class="di"><div class="k">'+esc(p[0])+'</div><div class="v">'+esc(p[1]||'—')+'</div></div>'; }).join('');
       var fin='<div class="fin-row">'+finBox('Açılış Bakiyesi',fmtMoney(agg.acilis))+finBox('Toplam Borç',fmtMoney(agg.borc))+
         finBox('Toplam Alacak',fmtMoney(agg.alacak))+finBox('Güncel Bakiye',bakiyeLabel(agg.bakiye))+'</div>';
-      var ledger=ledgerTableHtml(cariNo, true);
+      var ledger=ledgerPanelHtml('ekstre', cariNo, true);
       var davalar=CASES.filter(function(d){ return ''+d.CariNo===''+cariNo; });
       var davaHtml = davalar.length? '<h3 style="margin:18px 0 8px;font-size:14px">Bu Cariye Ait Davalar</h3>'+
         '<div class="table-wrap"><table><thead><tr><th>Dosya No</th><th>Dava Türü</th><th>Aşama</th></tr></thead><tbody>'+
@@ -778,9 +804,8 @@
           '<td>'+esc(caseLastActivity(d.DosyaNo)||'—')+'</td>'+
           '<td class="num neg">'+fmtMoney(ag.borc)+'</td><td class="num pos">'+fmtMoney(ag.alacak)+'</td>'+
           '<td class="num">'+fmtMoney(ag.kalan)+'</td>'+
-          '<td><button class="icon-btn" title="Detay" onclick="openCaseDetail(\''+dn+'\')">👁️</button>'+
-          '<button class="icon-btn" title="Düzenle" onclick="openCaseModal(\''+dn+'\')">✏️</button>'+
-          '<button class="icon-btn" title="Sil" onclick="removeCase(\''+dn+'\')">🗑️</button></td></tr>';
+          '<td style="text-align:right"><button class="icon-btn" title="Düzenle" onclick="event.stopPropagation();openCaseModal(\''+dn+'\')">✏️</button>'+
+          '<button class="icon-btn" title="Sil" onclick="event.stopPropagation();removeCase(\''+dn+'\')">🗑️</button></td></tr>';
       }).join('');
     }
     function openCaseModal(dosyaNo){
@@ -820,7 +845,7 @@
         .map(function(p){ return '<div class="di"><div class="k">'+esc(p[0])+'</div><div class="v">'+esc(p[1]||'—')+'</div></div>'; }).join('');
       var fin='<div class="fin-row">'+finBox('Dosya Tahakkuk',fmtMoney(ag.borc))+finBox('Dosya Tahsilat',fmtMoney(ag.alacak))+
         finBox('Dosya Kalan',fmtMoney(ag.kalan))+finBox('Cari Genel Bakiye',bakiyeLabel(cariB.bakiye))+'</div>';
-      var harHtml='<h3 style="margin:18px 0 8px;font-size:14px">Cari Hesap Hareketleri <span class="hint" style="font-weight:400">(bu davaya ait satırlar vurgulu)</span></h3>'+ledgerTableHtml(d.CariNo, false, dosyaNo);
+      var harHtml='<h3 style="margin:18px 0 8px;font-size:14px">Cari Hesap Hareketleri <span class="hint" style="font-weight:400">(bu davaya ait satırlar vurgulu)</span></h3>'+ledgerPanelHtml('caseLedger', d.CariNo, false, dosyaNo);
       $('caseDetailBody').innerHTML=fin+'<div class="detail-grid">'+info+'</div>'+(d.Aciklama?'<p style="margin-top:12px"><b>Açıklama:</b> '+esc(d.Aciklama)+'</p>':'')+harHtml;
       $('caseDetailEditBtn').onclick=function(){ closeModal('caseDetailModal'); openCaseModal(dosyaNo); };
       $('caseDetailCariBtn').onclick=function(){ closeModal('caseDetailModal'); openEkstre(d.CariNo); };
