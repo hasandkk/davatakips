@@ -138,6 +138,12 @@
       getMeta:function(){ var a=db.ayarlar; return { spreadsheetUrl:'', demo:true, davaTurleri:a.davaTurleri, asamalar:a.asamalar,
         cariTipleri:a.cariTipleri, borcKategori:a.borcKategori, alacakKategori:a.alacakKategori, odemeYontemi:a.odemeYontemi, avukatlar:a.avukatlar||['Nida Gamsız','Sadık Sarıbıyık','Alperen Codey'] }; },
       bootstrapData:function(){ return { cariler:db.cariler.slice(), cases:db.dosyalar.slice(), hareketler:db.hareketler.slice() }; },
+      initData:function(){
+        function mtx(arr,cols){ return { cols:cols, rows:arr.map(function(o){ return cols.map(function(k){ return o[k]!==undefined?o[k]:''; }); }) }; }
+        return { meta:this.getMeta(),
+          cariler:mtx(db.cariler,['CariNo','Unvan','Tip','Telefon','Email','KimlikVergiNo','Adres','AcilisBakiye','Notlar','KayitTarihi']),
+          cases:mtx(db.dosyalar,['DosyaNo','AcilisTarihi','CariNo','MuvekkilAd','Avukat','DavaTuru','KarsiTaraf','Asama','TazminatTalebi','AnlasilanUcret','Aciklama','SonGuncelleme']),
+          hareketler:mtx(db.hareketler,['IslemID','Tarih','CariNo','DosyaNo','Yon','Kategori','Tutar','OdemeYontemi','BelgeNo','Aciklama','KayitTarihi']) }; },
       addCari:function(d){ var no=(d.CariNo&&(''+d.CariNo).trim())||nextNo(db.cariler,'CariNo','C-',false);
         db.cariler.push({ CariNo:no, Unvan:d.Unvan||'', Tip:d.Tip||'Müvekkil', Telefon:d.Telefon||'', Email:d.Email||'',
           KimlikVergiNo:d.KimlikVergiNo||'', Adres:d.Adres||'', AcilisBakiye:num(d.AcilisBakiye), Notlar:d.Notlar||'', KayitTarihi:stamp() }); persist(); return { ok:true, cariNo:no }; },
@@ -525,35 +531,41 @@
     /* ===================== BAŞLATMA ===================== */
     window.addEventListener('load', function(){
       try {
-        loaderTimer=setTimeout(function(){ if(loaderCount>0) banner('Sunucudan yanıt gecikti. İlk açılışta veritabanı oluşturuluyorsa 1 dk sürebilir; aksi halde sayfayı yenileyin.','info'); }, 30000);
-        showLoader(true);
-        var r=server(function(meta){
-          banner(''); META=meta||META;
-          if(META.spreadsheetUrl) $('sheetLink').href=META.spreadsheetUrl;
-          fillSelect($('ca_Tip'), META.cariTipleri);
-          fillSelect($('c_DavaTuru'), META.davaTurleri);
-          fillSelect($('c_Asama'), META.asamalar);
-          fillSelect($('c_Avukat'), META.avukatlar, true);
-          fillSelect($('h_OdemeYontemi'), META.odemeYontemi);
-          fillSelect($('cariTipFilter'), META.cariTipleri, true);
-          fillSelect($('dosyaTurFilter'), META.davaTurleri, true);
-          fillSelect($('dosyaAsamaFilter'), META.asamalar, true);
-          fillSelect($('dosyaAvukatFilter'), META.avukatlar, true);
-          onHarYonChange();
-          loadAll();
-        }, function(){ showLoader(false); });
-        if(r) r.getMeta();
+        loaderTimer=setTimeout(function(){ if(loaderCount>0) banner('Veriler hâlâ yükleniyor… Büyük veride ilk açılış biraz sürebilir.','info'); }, 20000);
+        showLoader(true); banner('Veriler yükleniyor, lütfen bekleyin…','info');
+        loadAll();
       } catch(err){ showLoader(false); banner('Başlatma hatası: '+esc(err.message),'err'); }
     });
 
+    // Matris ({cols,rows}) -> nesne dizisi
+    function matrixToObjects(m){
+      if(!m||!m.cols) return [];
+      var cols=m.cols, rows=m.rows||[], out=new Array(rows.length);
+      for(var i=0;i<rows.length;i++){ var r=rows[i], o={}; for(var c=0;c<cols.length;c++) o[cols[c]]=r[c]; out[i]=o; }
+      return out;
+    }
+    function applyInit(data){
+      if(loaderTimer){ clearTimeout(loaderTimer); loaderTimer=null; }
+      if(data&&data.meta){ META=data.meta;
+        if(META.spreadsheetUrl) $('sheetLink').href=META.spreadsheetUrl;
+        fillSelect($('ca_Tip'), META.cariTipleri);
+        fillSelect($('c_DavaTuru'), META.davaTurleri);
+        fillSelect($('c_Asama'), META.asamalar);
+        fillSelect($('c_Avukat'), META.avukatlar, true);
+        fillSelect($('h_OdemeYontemi'), META.odemeYontemi);
+        fillSelect($('cariTipFilter'), META.cariTipleri, true);
+        fillSelect($('dosyaTurFilter'), META.davaTurleri, true);
+        fillSelect($('dosyaAsamaFilter'), META.asamalar, true);
+        fillSelect($('dosyaAvukatFilter'), META.avukatlar, true);
+        onHarYonChange();
+      }
+      CARILER=matrixToObjects(data&&data.cariler); CASES=matrixToObjects(data&&data.cases); HAR=matrixToObjects(data&&data.hareketler);
+      recomputeAggregates(); refreshCariSelects(); renderAll(); showLoader(false); banner('');
+    }
     function loadAll(){
       showLoader(true);
-      var r=server(function(data){
-        if(loaderTimer){ clearTimeout(loaderTimer); loaderTimer=null; }
-        CARILER=(data&&data.cariler)||[]; CASES=(data&&data.cases)||[]; HAR=(data&&data.hareketler)||[];
-        recomputeAggregates(); refreshCariSelects(); renderAll(); showLoader(false); banner('');
-      }, function(){ showLoader(false); });
-      if(r) r.bootstrapData(); else showLoader(false);
+      var r=server(applyInit, function(){ showLoader(false); });
+      if(r) r.initData(); else showLoader(false);
     }
     function renderAll(){ renderDashboard(); renderCariler(); renderCases(); renderHar(); renderRapor(); }
 

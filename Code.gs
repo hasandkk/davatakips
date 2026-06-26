@@ -166,6 +166,38 @@ function bootstrapData() {
   };
 }
 
+/**
+ * Bir sayfayı { cols:[başlıklar], rows:[[...],[...]] } biçiminde (matris)
+ * döndürür. Nesne yerine dizi gönderildiği için JSON çok daha küçük ve
+ * serileştirme hızlı olur (büyük veride sayfa açılışını hızlandırır).
+ */
+function sheetMatrix_(name) {
+  var values = getSheet_(name).getDataRange().getValues();
+  if (!values.length) return { cols: [], rows: [] };
+  var cols = values[0], rows = [];
+  for (var r = 1; r < values.length; r++) {
+    var src = values[r], out = [], empty = true;
+    for (var c = 0; c < cols.length; c++) {
+      var v = src[c];
+      if (v instanceof Date) v = Utilities.formatDate(v, 'Europe/Istanbul', 'yyyy-MM-dd');
+      out.push(v);
+      if (v !== '' && v !== null) empty = false;
+    }
+    if (!empty) rows.push(out);
+  }
+  return { cols: cols, rows: rows };
+}
+
+/** Açılışta tek çağrı: ayarlar + tüm veri (matris). İki tur yerine bir tur. */
+function initData() {
+  return {
+    meta: getMeta(),
+    cariler: sheetMatrix_(SHEET_CARILER),
+    cases: sheetMatrix_(SHEET_DOSYALAR),
+    hareketler: sheetMatrix_(SHEET_HAREKETLER)
+  };
+}
+
 /* ====================== CARİLER (CRUD) ====================== */
 
 function generateCariNo_(sheet) {
